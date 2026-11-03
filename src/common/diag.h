@@ -65,6 +65,16 @@ typedef enum {
     D_CHAR_TOO_WIDE,
     D_EXPECTED_PLUS_MINUS,
     D_TOO_MANY_ERRORS,
+    D_LINK_USAGE,
+    D_LINK_BAD_OBJECT,
+    D_LINK_UNSUPPORTED_SECTION,
+    D_LINK_UNSUPPORTED_RELOC,
+    D_LINK_UNDEFINED,
+    D_LINK_DUPLICATE,
+    D_LINK_NO_ENTRY,
+    D_LINK_RANGE,
+    D_LINK_PCREL_LO,
+    D_LINK_ALIGN,
     D_COUNT
 } DiagId;
 
@@ -76,8 +86,11 @@ void diag_set_file(const char *path);
 void diag_error(uint32_t line, uint32_t col, DiagId id,
                 const uint8_t *extra, size_t extra_len);
 
-/* Reports an error with no position (usage, I/O). */
+/* Reports an error with no position (usage, I/O, linker). */
 void diag_plain(DiagId id, const char *extra);
+
+/* Same, with two extra parts: "<message> <extra>: <extra2>". */
+void diag_plain2(DiagId id, const char *extra, const char *extra2);
 
 int diag_count(void);
 

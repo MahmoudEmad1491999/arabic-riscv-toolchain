@@ -42,3 +42,16 @@ These are decisions taken to keep moving while they are unconfirmed. Each one is
 | A26 | `حمل_قيمة` needs its value known at that line (number, earlier `.ثابت`, or a difference of earlier labels), because its length depends on the value. | Two-pass design without relaxation. | — |
 | A27 | `استدعاء` / `استدعاء_أخير` always use the two-instruction form with R_RISCV_CALL_PLT (temporary `مؤقت١` for the tail call), like GNU without relaxation. | Byte-identical output; the linker can relax later. | — |
 | A28 | The pseudo branches follow A13: the target must be a label in the same section. | Same reason as A13. | — |
+
+## Added in Phase 3 (linker)
+
+| # | Assumption | Why | How to confirm or change |
+|---|---|---|---|
+| A29 | Usage `رابط ملف_الخرج ملف_كائن...`: the output first, then the objects. No options yet. | Several inputs, one output; no flags to design yet. | Say if you prefer another order or Arabic options. |
+| A30 | Fixed layout: text segment at 0x10000 (headers, `.text`, `.rodata`), data segment on the next page (`.data`, `.bss`), inputs in command-line order. | Simple, and reproducible with a GNU ld script for testing. | — |
+| A31 | The entry point is always the global `_بداية`. | Matches the tests so far. | An option can be added when needed. |
+| A32 | Relocations: the ones in docs/spec-linker.md. R_RISCV_RELAX is ignored (no relaxation). Everything else is an error. | Covers everything our assembler emits, and GNU objects built with or without relaxation (as long as they have no `.align` in code, which needs R_RISCV_ALIGN). | — |
+| A33 | Input sections are mapped to the four output sections by name prefix; non-ALLOC sections are dropped; other ALLOC sections are an error. | Keeps the layout fixed. | — |
+| A34 | Weak symbols (from GNU objects) work: strong beats weak, undefined weak = 0. | Cheap and standard. | — |
+| A35 | The output symbol table keeps named local and global symbols, not `.L` labels. | Useful in objdump/gdb. | — |
+| A36 | No archives, scripts, shared libraries, PIE or relaxation yet. | Not needed until the compiler and its runtime library exist. | Archives will be needed for the runtime library (Phase 4). |

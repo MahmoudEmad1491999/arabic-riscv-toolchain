@@ -1,5 +1,8 @@
 /* rt.c - hosted implementation of the runtime layer (on top of libc). */
+#define _POSIX_C_SOURCE 200809L
 #include "rt.h"
+
+#include <sys/stat.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,6 +50,11 @@ int rt_write_file(const char *path, const uint8_t *data, size_t len)
         return -1;
     }
     return 0;
+}
+
+int rt_make_executable(const char *path)
+{
+    return chmod(path, 0755) == 0 ? 0 : -1;
 }
 
 void rt_write(int fd, const uint8_t *data, size_t len)

@@ -59,6 +59,16 @@ static const char *const diag_text[D_COUNT] = {
     [D_CHAR_TOO_WIDE]       = "الحرف لا يتسع في بايت",
     [D_EXPECTED_PLUS_MINUS] = "متوقع + أو - بعد السجل",
     [D_TOO_MANY_ERRORS]     = "أخطاء كثيرة، توقف",
+    [D_LINK_USAGE]          = "الاستخدام: رابط ملف_الخرج ملف_كائن...",
+    [D_LINK_BAD_OBJECT]     = "ملف كائن غير صالح:",
+    [D_LINK_UNSUPPORTED_SECTION] = "قسم غير مدعوم:",
+    [D_LINK_UNSUPPORTED_RELOC]   = "نوع نقل غير مدعوم في:",
+    [D_LINK_UNDEFINED]      = "مرجع إلى رمز غير معرف:",
+    [D_LINK_DUPLICATE]      = "رمز معرف أكثر من مرة:",
+    [D_LINK_NO_ENTRY]       = "نقطة البداية غير معرفة: _بداية",
+    [D_LINK_RANGE]          = "القيمة لا تتسع في التعليمة، الرمز:",
+    [D_LINK_PCREL_LO]       = "أدنى_نسبي بلا عالي_نسبي مطابق في:",
+    [D_LINK_ALIGN]          = "محاذاة كبيرة جدا في:",
 };
 
 static const char *diag_file = "";
@@ -184,6 +194,28 @@ void diag_error(uint32_t line, uint32_t col, DiagId id,
     if (extra != NULL) {
         line_cp(&l, ' ');
         line_utf8(&l, extra, extra_len);
+    }
+    line_emit(&l);
+}
+
+void diag_plain2(DiagId id, const char *extra, const char *extra2)
+{
+    static Line l;
+
+    diag_errors++;
+    if (diag_errors > DIAG_MAX_ERRORS) {
+        return;
+    }
+    l.n = 0;
+    line_str(&l, "خطأ: ");
+    line_str(&l, diag_text[id]);
+    if (extra != NULL) {
+        line_cp(&l, ' ');
+        line_str(&l, extra);
+    }
+    if (extra2 != NULL) {
+        line_str(&l, ": ");
+        line_str(&l, extra2);
     }
     line_emit(&l);
 }

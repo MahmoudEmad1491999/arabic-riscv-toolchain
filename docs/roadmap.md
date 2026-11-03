@@ -37,4 +37,12 @@
 - [ ] Bitwise and shift operators inside expressions: needs names (open item)
 - [ ] More directives (e.g. `.space`/fill values, `.balign`): only if the compiler needs them
 
-Next: Phase 3, the static linker.
+
+## Phase 3 status
+
+- [x] `رابط`: reads RV64 ELF objects, resolves global/weak symbols, lays out two segments, applies every relocation our assembler emits, writes a static executable with a symbol table
+- [x] Arabic link errors: undefined symbol, duplicate definition, missing `_بداية`, value out of range, unmatched `أدنى_نسبي`, bad object, unsupported section/relocation
+- [x] Tests: every runnable program is linked by `رابط` and by GNU ld at the same addresses, and the loaded images are compared; a three-file program; the encoding tests linked against a stub (all relocation types); link-error tests; corrupted-object fuzzing; differential fuzzing now links too
+- [ ] Static archives (`.a`): with the runtime library in Phase 4
+
+Next: Phase 4, the language and its compiler. This starts with design discussions.

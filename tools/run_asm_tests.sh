@@ -2,13 +2,16 @@
 # Assembler tests.
 #  1. tests/asm/NAME.تجميع: assemble with ours (build/مجمع) and with GNU as
 #     (via tools/translit.py, -mno-relax); compare with tools/elfcmp.py.
-#     Unless NAME.norun exists, link OUR object with GNU ld, run it under
-#     qemu-riscv64 and check NAME.code (exit code, default 0) / NAME.out.
+#     Unless NAME.norun exists, link OUR object with OUR linker (build/رابط),
+#     link it again with GNU ld at the same addresses and compare the loaded
+#     images (tools/execcmp.py), then run ours under qemu-riscv64 and check
+#     NAME.code (exit code, default 0) / NAME.out.
 #  2. tests/errors/NAME.تجميع: ours must fail (exit 1) and stderr (in file
 #     order, DIAG_ORDER=file) must contain the text in NAME.err.
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 AS="$ROOT/build/مجمع"
+LD="$ROOT/build/رابط"
 OUT="$ROOT/build/asm-tests"
 PREFIX=${RISCV_PREFIX:-riscv64-linux-gnu-}
 mkdir -p "$OUT"
@@ -29,7 +32,10 @@ for src in "$ROOT"/tests/asm/*.تجميع; do
         python3 -I "$ROOT/tools/elfcmp.py" "$OUT/$name.o" "$OUT/$name.ref.o" || ok=0
     fi
     if [ $ok = 1 ] && [ ! -f "$dir/$name.norun" ]; then
-        if "${PREFIX}ld" -e _بداية "$OUT/$name.o" -o "$OUT/$name"; then
+        if "$LD" "$OUT/$name" "$OUT/$name.o" &&
+           python3 -I "$ROOT/tools/execcmp.py" script "$OUT/$name" "$OUT/$name.ld" &&
+           "${PREFIX}ld" -e _بداية -T "$OUT/$name.ld" "$OUT/$name.o" -o "$OUT/$name.gnu" &&
+           python3 -I "$ROOT/tools/execcmp.py" compare "$OUT/$name" "$OUT/$name.gnu"; then
             qemu-riscv64 "$OUT/$name" > "$OUT/$name.stdout"
             code=$?
             want=0

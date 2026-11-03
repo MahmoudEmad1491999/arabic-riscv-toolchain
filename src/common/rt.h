@@ -24,6 +24,9 @@ int rt_read_file(const char *path, RtBuf *out);
 /* Writes a whole file (create/truncate). Returns 0 on success, -1 on failure. */
 int rt_write_file(const char *path, const uint8_t *data, size_t len);
 
+/* Marks a file as executable (rwxr-xr-x). Returns 0 on success. */
+int rt_make_executable(const char *path);
+
 /* Writes bytes to a file descriptor (RT_STDOUT / RT_STDERR). */
 void rt_write(int fd, const uint8_t *data, size_t len);
 

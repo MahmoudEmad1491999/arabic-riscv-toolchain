@@ -6,11 +6,12 @@ Sources are written in Vim Arabic mode on a terminal with no BiDi, so files are 
 
 ## Status
 
-Phases 1 and 2 are done: `مجمع` assembles RV64IM plus the pseudo-instructions (`حمل_قيمة`, `حمل_عنوان`, `استدعاء`, `عودة`, ...) and produces ELF objects identical to GNU as (`-mno-relax`) on every test. Next is Phase 3, the linker. See [docs/roadmap.md](docs/roadmap.md).
+Phases 1–3 are done. `مجمع` assembles RV64IM plus the pseudo-instructions (`حمل_قيمة`, `حمل_عنوان`, `استدعاء`, `عودة`, ...) into ELF objects identical to GNU as (`-mno-relax`). `رابط` links them into static executables whose loaded image matches GNU ld at the same addresses. Next is Phase 4, the language. See [docs/roadmap.md](docs/roadmap.md).
 
 ## Documents
 
 - [docs/spec-assembler.md](docs/spec-assembler.md): the assembler language: numbers, brackets, identifiers, registers, mnemonics, directives
+- [docs/spec-linker.md](docs/spec-linker.md): the linker: usage, layout, symbols, relocations
 - [docs/assumptions.md](docs/assumptions.md): working assumptions that are not yet confirmed
 - [docs/decisions.md](docs/decisions.md): decisions made by the owner
 - [docs/roadmap.md](docs/roadmap.md): phases and status
@@ -18,13 +19,14 @@ Phases 1 and 2 are done: `مجمع` assembles RV64IM plus the pseudo-instruction
 ## Using the assembler
 
 ```sh
-make                                   # builds build/مجمع
+make                                   # builds build/مجمع and build/رابط
 ./build/مجمع برنامج.تجميع برنامج.o
-riscv64-linux-gnu-ld -e _بداية برنامج.o -o برنامج    # our linker comes in Phase 3
+./build/مجمع مكتبة.تجميع مكتبة.o
+./build/رابط برنامج برنامج.o مكتبة.o   # output first, then objects
 qemu-riscv64 ./برنامج
 ```
 
-Errors are printed in Arabic, reversed for a plain left-to-right terminal (set `DIAG_ORDER=file` for file order).
+Programs start at the global label `_بداية`. Errors are printed in Arabic, reversed for a plain left-to-right terminal (set `DIAG_ORDER=file` for file order).
 
 ## Layout
 
@@ -32,12 +34,15 @@ Errors are printed in Arabic, reversed for a plain left-to-right terminal (set `
 src/common/    shared C modules: runtime layer (rt), UTF-8, Arabic character classes, numbers,
                byte buffers, ELF constants, Arabic diagnostics
 src/as/        the assembler: lexer, tables (registers/mnemonics/directives), two-pass core + ELF writer
+src/ld/        the linker: object reader, symbol resolution, layout, relocations, executable writer
 tests/unit/    C unit tests
 tests/asm/     Arabic assembly test programs (.تجميع) + expected stdout (.out) / exit code (.code);
                .norun marks encoding-only tests
 tests/errors/  programs that must fail, with the expected Arabic message (.err)
+tests/link/    multi-file programs (one directory each) + expected .out/.code
+tests/link-errors/  programs that must fail to link, with the expected message
 tests/gen/     generators for the big tests (they write numbers in file order for you)
-tools/         translit.py (Arabic -> GNU syntax, oracle only), elfcmp.py, run_*.sh, diff_fuzz.py
+tools/         translit.py (Arabic -> GNU syntax, oracle only), elfcmp.py, execcmp.py, run_*.sh, diff_fuzz.py
 ```
 
 ## Building and testing
@@ -51,9 +56,10 @@ sudo apt install build-essential python3 binutils-riscv64-linux-gnu qemu-user
 ```sh
 make unit     # C unit tests (built with ASan/UBSan)
 make oracle   # every tests/asm/*.تجميع -> translit.py -> GNU as/ld -> qemu-riscv64
-make asm      # our assembler vs GNU as on every test + error tests
+make asm      # our assembler vs GNU as on every test + error tests (linked with رابط)
+make link     # our linker vs GNU ld: multi-file programs, coverage, errors
 make test     # all of the above
-make fuzz     # differential fuzzing against GNU as (slower)
+make fuzz     # differential fuzzing against GNU as and GNU ld (slower)
 ```
 
 The oracle path is the reference that the assembler will be checked against from Phase 1 on: same source, our assembler versus GNU as, byte-for-byte.

@@ -7,10 +7,16 @@ COMMON_SRC := src/common/rt.c src/common/utf8.c src/common/chars.c src/common/nu
               src/common/buf.c src/common/diag.c
 AS_SRC     := src/as/main.c src/as/lexer.c src/as/tables.c src/as/as.c
 AS_BIN     := $(BUILD)/مجمع
+LD_SRC     := src/ld/main.c src/ld/ld.c
+LD_BIN     := $(BUILD)/رابط
 
-.PHONY: all test unit oracle asm fuzz clean
+.PHONY: all test unit oracle asm link fuzz clean
 
-all: $(AS_BIN) $(BUILD)/test_common
+all: $(AS_BIN) $(LD_BIN) $(BUILD)/test_common
+
+$(LD_BIN): $(LD_SRC) $(COMMON_SRC) src/ld/*.h src/common/*.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $(SANITIZE) -o $@ $(LD_SRC) $(COMMON_SRC)
 
 $(AS_BIN): $(AS_SRC) $(COMMON_SRC) src/as/*.h src/common/*.h
 	@mkdir -p $(BUILD)
@@ -28,14 +34,18 @@ oracle:
 	./tools/run_oracle.sh
 
 # Our assembler vs GNU as on every tests/asm file, plus the error tests.
-asm: $(AS_BIN)
+asm: $(AS_BIN) $(LD_BIN)
 	./tools/run_asm_tests.sh
 
-# Random programs: ours vs GNU as (slow; not part of `make test`).
-fuzz: $(AS_BIN)
+# Our linker vs GNU ld: multi-file programs, relocation coverage, errors.
+link: $(AS_BIN) $(LD_BIN)
+	./tools/run_link_tests.sh
+
+# Random programs: ours vs GNU as and GNU ld (slow; not part of `make test`).
+fuzz: $(AS_BIN) $(LD_BIN)
 	./tools/diff_fuzz.py 500
 
-test: unit oracle asm
+test: unit oracle asm link
 
 clean:
 	rm -rf $(BUILD)
