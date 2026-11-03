@@ -35,6 +35,10 @@
 #define R_RISCV_64      2
 #define R_RISCV_BRANCH  16
 #define R_RISCV_JAL     17
+#define R_RISCV_CALL_PLT 19
+#define R_RISCV_PCREL_HI20 23
+#define R_RISCV_PCREL_LO12_I 24
+#define R_RISCV_PCREL_LO12_S 25
 #define R_RISCV_HI20    26
 #define R_RISCV_LO12_I  27
 #define R_RISCV_LO12_S  28

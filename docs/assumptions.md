@@ -32,3 +32,13 @@ These are decisions taken to keep moving while they are unconfirmed. Each one is
 | A21 | Objects are produced as GNU `as -mno-relax` would: no `R_RISCV_RELAX` and no linker relaxation. Relocations always name the target symbol (local labels included), with field contents exactly as GNU writes them. | Makes byte-for-byte comparison possible; relaxation can come with our own linker. | — |
 | A22 | Numeric local labels are emitted as GNU-style `.L<n>^B<k>` local symbols, and only when referenced. | Identical symbol tables to GNU. | — |
 | A23 | Register names are reserved: they (and `عالي`, `أدنى`) cannot be used as label or constant names. A register number written with a redundant zero (e.g. `وسيط٠٠`) is not a register. | Avoids ambiguity. | — |
+
+## Added in Phase 2
+
+| # | Assumption | Why | How to confirm or change |
+|---|---|---|---|
+| A24 | M extension names: ضرب، ضرب_عالي، ضرب_عالي_بإشارة_وبلا_إشارة، ضرب_عالي_بلا_إشارة، قسمة، قسمة_بلا_إشارة، باقي، باقي_بلا_إشارة، and the `_كلمة` forms (spec table). | Follow the naming policy; not yet approved by the owner. | Approve or rename (one table in src/as/tables.c + translit.py). |
+| A25 | `حمل_عنوان` is always the non-PIC form (GNU `lla`): `جمع_علوي_للعداد` + `جمع_فوري` with R_RISCV_PCREL_HI20 / PCREL_LO12_I. The low part refers to an unnamed local label `.L0 ` at the first instruction, like GNU. | Static executables only for now. | Revisit if shared libraries / PIC are ever needed. |
+| A26 | `حمل_قيمة` needs its value known at that line (number, earlier `.ثابت`, or a difference of earlier labels), because its length depends on the value. | Two-pass design without relaxation. | — |
+| A27 | `استدعاء` / `استدعاء_أخير` always use the two-instruction form with R_RISCV_CALL_PLT (temporary `مؤقت١` for the tail call), like GNU without relaxation. | Byte-identical output; the linker can relax later. | — |
+| A28 | The pseudo branches follow A13: the target must be a label in the same section. | Same reason as A13. | — |

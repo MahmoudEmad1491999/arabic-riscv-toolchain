@@ -10,3 +10,4 @@ Decisions made by the project owner. Newest last.
 6. Latin text inside strings is stored exactly as typed.
 7. The toolchain is for personal use. Portability and converter tools come later.
 8. Code lives in a private GitHub repository.
+9. Pseudo-instruction names approved: حمل_قيمة، حمل_عنوان، نسخ، نفي، سالب، لا_عملية، قفز، قفز_بسجل، استدعاء، استدعاء_أخير، عودة، تفرع_إذا_صفر، تفرع_إذا_ليس_صفرا، تفرع_إذا_أكبر، تفرع_إذا_أصغر_أو_يساوي (+_بلا_إشارة); pc-relative operators عالي_نسبي: / أدنى_نسبي:.

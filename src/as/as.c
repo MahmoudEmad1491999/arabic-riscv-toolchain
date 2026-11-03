@@ -460,8 +460,16 @@ static int imm12(Assembler *as, const Token *t, const Value *v, int store,
     if (as->pass != 2) {
         return 0;
     }
-    if (v->reloc == RELOC_HI) {
+    if (v->reloc == RELOC_HI || v->reloc == RELOC_PCREL_HI) {
         return error_tok(t, D_RELOC_NOT_ALLOWED);
+    }
+    if (v->reloc == RELOC_PCREL_LO) {
+        /* GNU leaves the field zero; the linker fills it in */
+        if (v->sym == NULL) {
+            return error_tok(t, D_EXPECTED_SYMBOL);
+        }
+        add_reloc(as, at, store ? R_RISCV_PCREL_LO12_S : R_RISCV_PCREL_LO12_I, v->sym, v->v);
+        return 0;
     }
     if (v->reloc == RELOC_LO) {
         *field = lo12(v->v);
@@ -499,12 +507,12 @@ static uint32_t enc_s(const InsnDef *d, uint32_t rs1, uint32_t rs2, int64_t imm)
            (d->funct3 << 12) | ((u & 0x1Fu) << 7) | d->opcode;
 }
 
-static uint32_t enc_b(const InsnDef *d, uint32_t rs1, uint32_t rs2, int64_t off)
+static uint32_t enc_b(uint32_t funct3, uint32_t rs1, uint32_t rs2, int64_t off)
 {
     uint32_t u = (uint32_t)off;
     return (((u >> 12) & 1u) << 31) | (((u >> 5) & 0x3Fu) << 25) | (rs2 << 20) |
-           (rs1 << 15) | (d->funct3 << 12) | (((u >> 1) & 0xFu) << 8) |
-           (((u >> 11) & 1u) << 7) | d->opcode;
+           (rs1 << 15) | (funct3 << 12) | (((u >> 1) & 0xFu) << 8) |
+           (((u >> 11) & 1u) << 7) | 0x63u;
 }
 
 static uint32_t enc_j(uint32_t rd, int64_t off)
@@ -524,6 +532,58 @@ static int check_target_symbol(Assembler *as, const Token *t, const Value *v)
     }
     return 0;
 }
+
+/* Conditional branch to a label in the current section (assumption A13). */
+static int branch_word(Assembler *as, uint32_t funct3, uint32_t rs1, uint32_t rs2,
+                       const Token *vt, const Value *v, uint64_t at, uint32_t *word)
+{
+    int64_t field = 0;
+    if (check_target_symbol(as, vt, v) != 0) {
+        return -1;
+    }
+    if (as->pass == 2) {
+        if (!v->sym->defined || v->sym->section != as->cur) {
+            return error_tok(vt, D_BRANCH_TARGET);
+        }
+        field = (int64_t)(v->sym->value + (uint64_t)v->v - at);
+        if (field & 1) {
+            return error_tok(vt, D_MISALIGNED_TARGET);
+        }
+        if (field < -4096 || field > 4094) {
+            return error_tok(vt, D_BRANCH_RANGE);
+        }
+        add_reloc(as, at, R_RISCV_BRANCH, v->sym, v->v);
+    }
+    *word = enc_b(funct3, rs1, rs2, field);
+    return 0;
+}
+
+/* jal rd، target. The field holds S + A - P like GNU, S = 0 when undefined. */
+static int jal_word(Assembler *as, uint32_t rd, const Token *vt, const Value *v,
+                    uint64_t at, uint32_t *word)
+{
+    int64_t field = 0;
+    if (check_target_symbol(as, vt, v) != 0) {
+        return -1;
+    }
+    if (as->pass == 2) {
+        uint64_t s = v->sym->defined ? v->sym->value : 0;
+        field = (int64_t)(s + (uint64_t)v->v - at);
+        if (v->sym->defined && v->sym->section == as->cur) {
+            if (field & 1) {
+                return error_tok(vt, D_MISALIGNED_TARGET);
+            }
+            if (field < -(1 << 20) || field > (1 << 20) - 2) {
+                return error_tok(vt, D_BRANCH_RANGE);
+            }
+        }
+        add_reloc(as, at, R_RISCV_JAL, v->sym, v->v);
+    }
+    *word = enc_j(rd, field);
+    return 0;
+}
+
+static int pseudo(Assembler *as, const InsnDef *d);
 
 static int insn(Assembler *as, const InsnDef *d)
 {
@@ -610,24 +670,10 @@ static int insn(Assembler *as, const InsnDef *d)
             return -1;
         }
         vt = tok(as);
-        if (parse_operand(as, &v) || check_target_symbol(as, vt, &v)) {
+        if (parse_operand(as, &v) ||
+            branch_word(as, d->funct3, rs1, rs2, vt, &v, at, &word)) {
             return -1;
         }
-        field = 0;
-        if (as->pass == 2) {
-            if (!v.sym->defined || v.sym->section != as->cur) {
-                return error_tok(vt, D_BRANCH_TARGET);
-            }
-            field = (int64_t)(v.sym->value + (uint64_t)v.v - at);
-            if (field & 1) {
-                return error_tok(vt, D_MISALIGNED_TARGET);
-            }
-            if (field < -4096 || field > 4094) {
-                return error_tok(vt, D_BRANCH_RANGE);
-            }
-            add_reloc(as, at, R_RISCV_BRANCH, v.sym, v.v);
-        }
-        word = enc_b(d, rs1, rs2, field);
         break;
 
     case FMT_JAL:
@@ -635,24 +681,9 @@ static int insn(Assembler *as, const InsnDef *d)
             return -1;
         }
         vt = tok(as);
-        if (parse_operand(as, &v) || check_target_symbol(as, vt, &v)) {
+        if (parse_operand(as, &v) || jal_word(as, rd, vt, &v, at, &word)) {
             return -1;
         }
-        field = 0;
-        if (as->pass == 2) {
-            uint64_t s = v.sym->defined ? v.sym->value : 0;
-            field = (int64_t)(s + (uint64_t)v.v - at);
-            if (v.sym->defined && v.sym->section == as->cur) {
-                if (field & 1) {
-                    return error_tok(vt, D_MISALIGNED_TARGET);
-                }
-                if (field < -(1 << 20) || field > (1 << 20) - 2) {
-                    return error_tok(vt, D_BRANCH_RANGE);
-                }
-            }
-            add_reloc(as, at, R_RISCV_JAL, v.sym, v.v);
-        }
-        word = enc_j(rd, field);
         break;
 
     case FMT_LUI:
@@ -666,10 +697,17 @@ static int insn(Assembler *as, const InsnDef *d)
             return -1;
         }
         if (as->pass == 2) {
-            if (v.reloc == RELOC_LO || (v.reloc == RELOC_HI && d->fmt == FMT_AUIPC)) {
+            if (v.reloc == RELOC_LO || v.reloc == RELOC_PCREL_LO ||
+                (v.reloc == RELOC_HI && d->fmt == FMT_AUIPC) ||
+                (v.reloc == RELOC_PCREL_HI && d->fmt == FMT_LUI)) {
                 return error_tok(vt, D_RELOC_NOT_ALLOWED);
             }
-            if (v.reloc == RELOC_HI) {
+            if (v.reloc == RELOC_PCREL_HI) {
+                if (v.sym == NULL) {
+                    return error_tok(vt, D_EXPECTED_SYMBOL);
+                }
+                add_reloc(as, at, R_RISCV_PCREL_HI20, v.sym, v.v);
+            } else if (v.reloc == RELOC_HI) {
                 imm = hi20(v.v);
                 if (v.sym != NULL) {
                     add_reloc(as, at, R_RISCV_HI20, v.sym, v.v);
@@ -689,9 +727,222 @@ static int insn(Assembler *as, const InsnDef *d)
     case FMT_FIXED:
         word = d->opcode;
         break;
+
+    case FMT_PSEUDO:
+        as->pos--; /* pseudo() reads the mnemonic itself */
+        return pseudo(as, d);
     }
 
     buf_u32(&cur_sec(as)->data, word);
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Pseudo-instructions (expanded exactly like GNU as)                  */
+
+#define X_ZERO 0u
+#define X_RA   1u
+#define X_T1   6u
+
+static uint32_t enc_imm(uint32_t opcode, uint32_t funct3, uint32_t rd, uint32_t rs1, int64_t imm)
+{
+    return (((uint32_t)imm & 0xFFFu) << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode;
+}
+
+typedef struct {
+    uint32_t w[16];
+    int n;
+} Words;
+
+static int is_sext32(int64_t v)
+{
+    return v == (int64_t)(int32_t)v;
+}
+
+/* GNU as load_const(): lui/addiw for 32-bit values, otherwise build the
+ * upper part recursively, shift it into place and add the low 12 bits. */
+static void load_const(Words *out, uint32_t rd, int64_t v)
+{
+    int64_t lower = lo12(v);
+    uint64_t upper = (uint64_t)v - (uint64_t)lower;
+
+    if (!is_sext32(v)) {
+        int shift = 12;
+        while (((upper >> shift) & 1u) == 0) {
+            shift++;
+        }
+        load_const(out, rd, (int64_t)upper >> shift);
+        out->w[out->n++] = enc_imm(0x13u, 1, rd, rd, shift);          /* slli */
+        if (lower != 0) {
+            out->w[out->n++] = enc_imm(0x13u, 0, rd, rd, lower);      /* addi */
+        }
+    } else {
+        uint32_t hi_reg = X_ZERO;
+        if (upper != 0) {
+            out->w[out->n++] = ((((uint32_t)upper) >> 12) << 12) | (rd << 7) | 0x37u; /* lui */
+            hi_reg = rd;
+        }
+        if (lower != 0 || hi_reg == X_ZERO) {
+            out->w[out->n++] = enc_imm(0x1Bu, 0, rd, hi_reg, lower);  /* addiw */
+        }
+    }
+}
+
+static void li_words(Words *out, uint32_t rd, int64_t v)
+{
+    out->n = 0;
+    if (v >= -2048 && v <= 2047) {
+        out->w[out->n++] = enc_imm(0x13u, 0, rd, X_ZERO, v);          /* addi */
+    } else {
+        load_const(out, rd, v);
+    }
+}
+
+/* Unnamed local label GNU creates for la: ".L0 " at the auipc. */
+static Symbol *fake_label(Assembler *as, uint64_t value)
+{
+    static const uint8_t name[] = ".L0 ";
+    Symbol *s = arena_alloc(as->arena, sizeof *s);
+    s->name = name;
+    s->len = 4;
+    s->defined = 1;
+    s->section = as->cur;
+    s->value = value;
+    s->referenced = 1;
+    buf_bytes(&as->symbols, &s, sizeof s);
+    return s;
+}
+
+static int expect_symbol_value(const Token *t, const Value *v)
+{
+    if (v->sym == NULL || v->reloc != RELOC_NONE) {
+        return error_tok(t, D_EXPECTED_SYMBOL);
+    }
+    return 0;
+}
+
+static int pseudo(Assembler *as, const InsnDef *d)
+{
+    Token *head = tok(as);
+    uint64_t at = cur_offset(as);
+    uint32_t rd = 0, rs = 0, rs2 = 0;
+    Words w;
+    Token *vt;
+    Value v;
+    int i;
+
+    advance(as);
+    if (in_bss_error(as, head) != 0) {
+        return -1;
+    }
+    w.n = 0;
+
+    switch (d->pseudo) {
+    case P_LI: {
+        int64_t value;
+        if (parse_reg(as, &rd) || expect_comma(as) || parse_constant(as, &value)) {
+            return -1;
+        }
+        li_words(&w, rd, value);
+        break;
+    }
+    case P_LA:
+        if (parse_reg(as, &rd) || expect_comma(as)) {
+            return -1;
+        }
+        vt = tok(as);
+        if (parse_operand(as, &v) || expect_symbol_value(vt, &v)) {
+            return -1;
+        }
+        if (as->pass == 2) {
+            add_reloc(as, at, R_RISCV_PCREL_HI20, v.sym, v.v);
+            add_reloc(as, at + 4, R_RISCV_PCREL_LO12_I, fake_label(as, at), 0);
+        }
+        w.w[w.n++] = (rd << 7) | 0x17u;                     /* auipc rd، 0 */
+        w.w[w.n++] = enc_imm(0x13u, 0, rd, rd, 0);          /* addi rd، rd، 0 */
+        break;
+    case P_MV:
+    case P_NOT:
+    case P_NEG:
+        if (parse_reg(as, &rd) || expect_comma(as) || parse_reg(as, &rs)) {
+            return -1;
+        }
+        if (d->pseudo == P_MV) {
+            w.w[w.n++] = enc_imm(0x13u, 0, rd, rs, 0);      /* addi rd، rs، 0 */
+        } else if (d->pseudo == P_NOT) {
+            w.w[w.n++] = enc_imm(0x13u, 4, rd, rs, -1);     /* xori rd، rs، -1 */
+        } else {
+            w.w[w.n++] = 0x40000033u | (rs << 20) | (rd << 7); /* sub rd، zero، rs */
+        }
+        break;
+    case P_NOP:
+        w.w[w.n++] = 0x00000013u;
+        break;
+    case P_RET:
+        w.w[w.n++] = 0x00008067u;                           /* jalr zero، ra + 0 */
+        break;
+    case P_JR:
+        if (parse_reg(as, &rs) != 0) {
+            return -1;
+        }
+        w.w[w.n++] = (rs << 15) | 0x67u;                    /* jalr zero، rs + 0 */
+        break;
+    case P_J:
+        vt = tok(as);
+        if (parse_operand(as, &v) || jal_word(as, X_ZERO, vt, &v, at, &w.w[0])) {
+            return -1;
+        }
+        w.n = 1;
+        break;
+    case P_CALL:
+    case P_TAIL: {
+        uint32_t tmp = d->pseudo == P_CALL ? X_RA : X_T1;
+        uint32_t link = d->pseudo == P_CALL ? X_RA : X_ZERO;
+        vt = tok(as);
+        if (parse_operand(as, &v) || expect_symbol_value(vt, &v)) {
+            return -1;
+        }
+        add_reloc(as, at, R_RISCV_CALL_PLT, v.sym, v.v);
+        w.w[w.n++] = (tmp << 7) | 0x17u;                     /* auipc tmp، 0 */
+        w.w[w.n++] = (tmp << 15) | (link << 7) | 0x67u;      /* jalr link، tmp + 0 */
+        break;
+    }
+    case P_BEQZ:
+    case P_BNEZ:
+        if (parse_reg(as, &rs) || expect_comma(as)) {
+            return -1;
+        }
+        vt = tok(as);
+        if (parse_operand(as, &v) ||
+            branch_word(as, d->pseudo == P_BEQZ ? 0 : 1, rs, X_ZERO, vt, &v, at, &w.w[0])) {
+            return -1;
+        }
+        w.n = 1;
+        break;
+    case P_BGT:
+    case P_BLE:
+    case P_BGTU:
+    case P_BLEU: {
+        static const uint32_t f3[] = {4, 5, 6, 7}; /* blt bge bltu bgeu, operands swapped */
+        if (parse_reg(as, &rs) || expect_comma(as) || parse_reg(as, &rs2) ||
+            expect_comma(as)) {
+            return -1;
+        }
+        vt = tok(as);
+        if (parse_operand(as, &v) ||
+            branch_word(as, f3[d->pseudo - P_BGT], rs2, rs, vt, &v, at, &w.w[0])) {
+            return -1;
+        }
+        w.n = 1;
+        break;
+    }
+    case P_NONE:
+        break;
+    }
+
+    for (i = 0; i < w.n; i++) {
+        buf_u32(&cur_sec(as)->data, w.w[i]);
+    }
     return 0;
 }
 

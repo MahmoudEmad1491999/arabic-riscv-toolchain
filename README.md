@@ -6,7 +6,7 @@ Sources are written in Vim Arabic mode on a terminal with no BiDi, so files are 
 
 ## Status
 
-Phase 1 is done: `مجمع`, the RV64I assembler, produces ELF objects identical to GNU as (`-mno-relax`) on every test. Next is Phase 2. See [docs/roadmap.md](docs/roadmap.md).
+Phases 1 and 2 are done: `مجمع` assembles RV64IM plus the pseudo-instructions (`حمل_قيمة`, `حمل_عنوان`, `استدعاء`, `عودة`, ...) and produces ELF objects identical to GNU as (`-mno-relax`) on every test. Next is Phase 3, the linker. See [docs/roadmap.md](docs/roadmap.md).
 
 ## Documents
 

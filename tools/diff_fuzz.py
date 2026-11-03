@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Differential fuzzing: ours vs GNU as on randomly reshuffled programs.
 
-Takes a valid program, deletes / duplicates / swaps whole lines, and for every
+Takes one of the valid test programs, deletes / duplicates / swaps whole lines, and for every
 variant OUR assembler accepts, assembles the transliteration with GNU as and
 compares the objects with elfcmp.py. Known, documented differences
 (docs/assumptions.md A14, A15) are skipped.
@@ -16,7 +16,8 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 AS = os.path.join(ROOT, "build", "مجمع")
-SEED_FILE = os.path.join(ROOT, "tests", "asm", "كل_التعليمات.تجميع")
+SEED_FILES = [os.path.join(ROOT, "tests", "asm", f)
+              for f in ("كل_التعليمات.تجميع", "أشباه_التعليمات.تجميع", "طباعة_أعداد.تجميع")]
 PREFIX = os.environ.get("RISCV_PREFIX", "riscv64-linux-gnu-")
 
 
@@ -27,12 +28,13 @@ def run(*cmd):
 def main():
     iterations = int(sys.argv[1]) if len(sys.argv) > 1 else 300
     random.seed(int(sys.argv[2]) if len(sys.argv) > 2 else 1)
-    lines = open(SEED_FILE, encoding="utf-8").read().split("\n")
+    seeds = [open(f, encoding="utf-8").read().split("\n") for f in SEED_FILES]
     tmp = tempfile.mkdtemp()
     src, ours, ref_s, ref_o = (os.path.join(tmp, n) for n in
                                ("t.تجميع", "t.o", "t.s", "t.ref.o"))
     stats = dict(match=0, mismatch=0, skipped=0)
     for _ in range(iterations):
+        lines = random.choice(seeds)
         prog = lines[:]
         for _ in range(random.randint(1, 8)):
             p = random.randrange(len(prog))
@@ -55,7 +57,7 @@ def main():
         if re.search(r"^\.align [012]$", text, re.M):   # A15
             stats["skipped"] += 1
             continue
-        g = run(PREFIX + "as", "-march=rv64i", "-mabi=lp64", "-mno-relax", ref_s, "-o", ref_o)
+        g = run(PREFIX + "as", "-march=rv64im", "-mabi=lp64", "-mno-relax", ref_s, "-o", ref_o)
         if g.returncode:                                   # A14: GNU is stricter
             stats["skipped"] += 1
             continue

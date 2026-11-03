@@ -26,4 +26,15 @@
 - [x] Arabic diagnostics (A2, A18)
 - [x] Tests: every instruction compared with GNU as (`tests/asm/كل_التعليمات.تجميع`), programs run under qemu, 42 error tests, differential fuzzing (`make fuzz`)
 
-Next (Phase 2): name the pseudo-instructions and pc-relative relocation operators (needs the owner's decisions), then implement them and the M extension.
+
+
+## Phase 2 status
+
+- [x] Pseudo-instructions with the approved names, expanded exactly like GNU (`حمل_قيمة` follows GNU's load_const algorithm)
+- [x] pc-relative relocations `عالي_نسبي:` / `أدنى_نسبي:`, R_RISCV_CALL_PLT
+- [x] M extension (names: assumption A24)
+- [x] Tests: `أشباه_التعليمات` (every pseudo, 220+ `حمل_قيمة` values, all new relocations) byte-identical to GNU; `طباعة_أعداد` runs under qemu (call/return, division, printing numbers); new error tests; fuzzing over all test programs
+- [ ] Bitwise and shift operators inside expressions: needs names (open item)
+- [ ] More directives (e.g. `.space`/fill values, `.balign`): only if the compiler needs them
+
+Next: Phase 3, the static linker.

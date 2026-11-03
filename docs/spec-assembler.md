@@ -49,7 +49,7 @@ Brackets are allowed and used for grouping in expressions. Because the terminal 
 ## Operand syntax
 - Operand order is the same as GAS (rd, rs1, rs2/imm), read right-to-left.
 - Memory operand: an address expression `سجل + إزاحة`, `سجل - إزاحة`, or just `سجل`. No brackets. GAS `lw a0, 8(sp)` is `حمل_كلمة وسيط٠، مؤشر_المكدس + ٨`. Stores: `خزن_كلمة مصدر، أساس + إزاحة`. jalr: `قفز_وربط_بسجل وجهة، أساس + إزاحة`.
-- Relocation operators: `عالي:رمز` (%hi), `أدنى:رمز` (%lo). The operator takes one primary; for symbol + offset use brackets, e.g. `عالي:) رمز + ٤ (` in file order (A16). Allowed in: `حمل_علوي_فوري` (عالي), 12-bit immediates of I-type, loads, stores and `قفز_وربط_بسجل` (أدنى). PC-relative forms for Phase 2 (proposed: `عالي_نسبي:رمز`, `أدنى_نسبي:رمز`, to be confirmed).
+- Relocation operators: `عالي:رمز` (%hi), `أدنى:رمز` (%lo), `عالي_نسبي:رمز` (%pcrel_hi, on `جمع_علوي_للعداد`) and `أدنى_نسبي:تسمية` (%pcrel_lo; the operand is the label of the matching `جمع_علوي_للعداد`, used in 12-bit immediates, loads, stores and `قفز_وربط_بسجل`). The operator takes one primary; for symbol + offset use brackets, e.g. `عالي:) رمز + ٤ (` in file order (A16). Allowed in: `حمل_علوي_فوري` (عالي), 12-bit immediates of I-type, loads, stores and `قفز_وربط_بسجل` (أدنى). PC-relative forms for Phase 2 (proposed: `عالي_نسبي:رمز`, `أدنى_نسبي:رمز`, to be confirmed).
 - Assembler expressions in v1: + - * / and brackets, left-associative in file order, `* /` before `+ -` (A8). Bitwise/shift operators in expressions: open item.
 - Branch targets must be labels in the same section (A13); `قفز_وربط` may target any symbol.
 
@@ -153,3 +153,39 @@ Arabic section names map to the standard ELF names (.text, .data, .rodata, .bss)
 ## Diagnostics
 In Arabic. Plan: build each message in file-order convention (same as source, numbers least-significant-first via the shared helper), then reverse the whole line code-point-wise when printing to the plain left-to-right terminal, which reproduces what Vim rightleft shows. Known limitation: the terminal does no Arabic shaping, so letters will not be joined. Keep all message text in one table so wording can change in one place.
 
+
+## M extension (assumption A24: names not yet approved)
+| Arabic | GAS |
+|---|---|
+| ضرب | mul |
+| ضرب_عالي | mulh |
+| ضرب_عالي_بإشارة_وبلا_إشارة | mulhsu |
+| ضرب_عالي_بلا_إشارة | mulhu |
+| قسمة | div |
+| قسمة_بلا_إشارة | divu |
+| باقي | rem |
+| باقي_بلا_إشارة | remu |
+| ضرب_كلمة | mulw |
+| قسمة_كلمة | divw |
+| قسمة_بلا_إشارة_كلمة | divuw |
+| باقي_كلمة | remw |
+| باقي_بلا_إشارة_كلمة | remuw |
+
+## Pseudo-instructions (approved)
+Each expands exactly as GNU as does with `-mno-relax`.
+
+| Arabic | GAS | Expansion |
+|---|---|---|
+| `حمل_قيمة سجل، ثابت` | li | `جمع_فوري` alone if the value fits 12 bits, otherwise GNU's load_const sequence (`حمل_علوي_فوري`/`جمع_فوري_كلمة`, then `رفع_فوري` + `جمع_فوري` steps for 64-bit values) |
+| `حمل_عنوان سجل، رمز` | la (non-PIC) | `جمع_علوي_للعداد` + `جمع_فوري` with pc-relative relocations |
+| `نسخ أ، ب` | mv | `جمع_فوري أ، ب، ٠` |
+| `نفي أ، ب` | not | `أو_حصري_فوري أ، ب، -١` |
+| `سالب أ، ب` | neg | `طرح أ، صفر، ب` |
+| `لا_عملية` | nop | `جمع_فوري صفر، صفر، ٠` |
+| `قفز هدف` | j | `قفز_وربط صفر، هدف` |
+| `قفز_بسجل سجل` | jr | `قفز_وربط_بسجل صفر، سجل` |
+| `استدعاء رمز` | call | `جمع_علوي_للعداد عنوان_العودة` + `قفز_وربط_بسجل عنوان_العودة، عنوان_العودة` (R_RISCV_CALL_PLT) |
+| `استدعاء_أخير رمز` | tail | same through `مؤقت١`, linking to `صفر` |
+| `عودة` | ret | `قفز_وربط_بسجل صفر، عنوان_العودة` |
+| `تفرع_إذا_صفر` / `تفرع_إذا_ليس_صفرا` | beqz / bnez | compare with `صفر` |
+| `تفرع_إذا_أكبر` / `تفرع_إذا_أصغر_أو_يساوي` (+`_بلا_إشارة`) | bgt / ble (+u) | `تفرع_إذا_أصغر` / `تفرع_إذا_أكبر_أو_يساوي` with the registers swapped |

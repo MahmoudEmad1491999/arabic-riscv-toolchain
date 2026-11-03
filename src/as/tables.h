@@ -16,8 +16,30 @@ typedef enum {
     FMT_JALR,     /* rd، rs1 ± imm12 */
     FMT_LUI,      /* rd، imm20 */
     FMT_AUIPC,    /* rd، imm20 */
-    FMT_FIXED     /* no operands, fixed encoding */
+    FMT_FIXED,    /* no operands, fixed encoding */
+    FMT_PSEUDO    /* pseudo-instruction: see PseudoKind */
 } InsnFormat;
+
+typedef enum {
+    P_NONE,
+    P_LI,     /* حمل_قيمة      li   */
+    P_LA,     /* حمل_عنوان     la (non-PIC: auipc + addi) */
+    P_MV,     /* نسخ           mv   */
+    P_NOT,    /* نفي           not  */
+    P_NEG,    /* سالب          neg  */
+    P_NOP,    /* لا_عملية      nop  */
+    P_J,      /* قفز           j    */
+    P_JR,     /* قفز_بسجل      jr   */
+    P_CALL,   /* استدعاء       call */
+    P_TAIL,   /* استدعاء_أخير  tail */
+    P_RET,    /* عودة          ret  */
+    P_BEQZ,   /* تفرع_إذا_صفر */
+    P_BNEZ,   /* تفرع_إذا_ليس_صفرا */
+    P_BGT,    /* تفرع_إذا_أكبر */
+    P_BLE,    /* تفرع_إذا_أصغر_أو_يساوي */
+    P_BGTU,   /* تفرع_إذا_أكبر_بلا_إشارة */
+    P_BLEU    /* تفرع_إذا_أصغر_أو_يساوي_بلا_إشارة */
+} PseudoKind;
 
 typedef struct {
     const char *name;   /* Arabic mnemonic, UTF-8 */
@@ -26,6 +48,7 @@ typedef struct {
     uint32_t funct3;
     uint32_t funct7;    /* FMT_R: funct7; FMT_SHIFT: bits imm[11:...] */
     uint32_t shamt_max; /* FMT_SHIFT only */
+    PseudoKind pseudo;  /* FMT_PSEUDO only */
 } InsnDef;
 
 const InsnDef *find_insn(const uint8_t *name, size_t len);
@@ -58,6 +81,8 @@ DirKind find_directive(const uint8_t *name, size_t len);
 #define RELOC_NONE 0
 #define RELOC_HI   1
 #define RELOC_LO   2
+#define RELOC_PCREL_HI 3  /* عالي_نسبي: */
+#define RELOC_PCREL_LO 4  /* أدنى_نسبي: */
 int find_reloc_op(const uint8_t *name, size_t len);
 
 int name_eq(const uint8_t *name, size_t len, const char *s);
