@@ -1,0 +1,154 @@
+# Arabic assembler specification (v0 draft)
+
+This is the normative spec. Working assumptions that are not yet confirmed are listed in [assumptions.md](assumptions.md); where they matter they are also marked here.
+
+## The editing environment (why the rules look like this)
+
+Source is written in Vim Arabic mode (rightleft) on a terminal with NO BiDi and NO bracket mirroring. The first character typed appears at the far right. Nothing is reordered or mirrored for the programmer, so the programmer acts as the BiDi algorithm by hand: the line flows right-to-left, and number runs are left-to-right islands that are typed backwards.
+
+"File order" = typing order = the order of code points in the file. All rules below are in file order.
+
+## Lexical spec (assembler)
+
+Encoding: UTF-8. The lexer decodes to code points; columns in diagnostics count code points.
+
+### Numbers
+- Digits: Arabic-Indic U+0660–U+0669 only. ASCII 0-9 are rejected (error). Persian digits U+06F0–U+06F9 also rejected unless the user decides otherwise.
+- A number run is stored LEAST significant digit first. The user types 1234 as ٤ then ٣ then ٢ then ١, so the file contains ٤٣٢١ and its value is 1234. On the user's screen it reads 1234.
+- A number token always starts (in file order) with an Arabic-Indic digit. This keeps it distinct from identifiers.
+- Base markers come FIRST in file order (they show on screen at the right end, like an Intel `FFh` suffix):
+  - `٠س` then hex digits, least significant first. Hex digits: ٠–٩ plus أ=10 ب=11 ج=12 د=13 ه=14 و=15 (abjad order; ه is U+0647, أ is U+0623).
+    Example: 0x1A is file ٠ س أ ١ ; 0xFF is file ٠ س و و.
+  - `٠ث` then binary digits, least significant first. 0b101 is file ٠ ث ١ ٠ ١.
+  - Only ٠ followed by س or ث is a marker; otherwise ٠ is an ordinary digit.
+- Digit grouping: Arabic thousands separator ٬ (U+066C) allowed between digits, ignored for the value.
+- Lexer method: collect the whole number run, then interpret it least-significant-first (or reverse it and parse normally). One shared helper formats numbers back into file order; every tool that emits source (compiler codegen, listings, disassembly) MUST use it.
+- Minus: `-` is an operator in the right-to-left flow, written BEFORE the number in file order (typed `-` then digits). Binary minus works the same way: `مؤشر_المكدس - ٨`.
+
+### Brackets (grouping)
+Brackets are allowed and used for grouping in expressions. Because the terminal does not mirror, the programmer types the glyph that looks right on screen: in file order `)` OPENS and `(` CLOSES; likewise `]` opens and `[` closes. The lexer maps them accordingly. (Taken as the working assumption; the user was asked to confirm it in Vim.) The same mirrored rule will apply to `<` `>` in the language later.
+
+### Identifiers
+- Arabic letters, `_`, and Arabic-Indic digits (not as first character).
+- Reject in identifiers: tatweel ـ U+0640, tashkeel (diacritics, U+064B–U+065F, U+0670), Arabic presentation forms (U+FB50–U+FDFF, U+FE70–U+FEFF).
+- No normalisation: أ إ آ ا, ى/ي, ة/ه are distinct letters.
+- Digits inside user identifiers are plain characters (identity = byte equality, no reversal). Only where a digit run has a numeric meaning (register numbers, local labels) is it read least-significant-first. Example: to see سجل٣١ on screen the user types سجل then ١ then ٣; the file holds سجل١٣ and it means register 31.
+
+### Strings and characters
+- Strings: `"..."`, stored exactly as typed (including any Latin text; no reordering).
+- Escapes: `\س` newline (سطر), `\ر` carriage return (رجوع), `\ج` tab (جدولة), `\٠` NUL, `\\`, `\"`.
+- Character literal `'أ'` has the value of the Unicode code point. Using a non-ASCII character literal where a single byte is required (e.g. `.بايت`) is an error.
+
+### Other punctuation
+- Operand separator: Arabic comma ، (U+060C).
+- Comment: `#` to end of line.
+- Label definition: `اسم:`.
+- Local labels: a number then `:` defines; a reference is the number followed by ق (قادم, forward) or م (ماضي, backward). Number digits least significant first.
+- Policy: only symmetric characters are used where direction matters (+ - * / = : | # @ _ . " '), except brackets as defined above.
+
+## Operand syntax
+- Operand order is the same as GAS (rd, rs1, rs2/imm), read right-to-left.
+- Memory operand: an address expression `سجل + إزاحة`, `سجل - إزاحة`, or just `سجل`. No brackets. GAS `lw a0, 8(sp)` is `حمل_كلمة وسيط٠، مؤشر_المكدس + ٨`. Stores: `خزن_كلمة مصدر، أساس + إزاحة`. jalr: `قفز_وربط_بسجل وجهة، أساس + إزاحة`.
+- Relocation operators: `عالي:رمز` (%hi), `أدنى:رمز` (%lo). PC-relative forms for Phase 2 (proposed: `عالي_نسبي:رمز`, `أدنى_نسبي:رمز`, to be confirmed).
+- Assembler expressions in v1: + - * / and brackets. Bitwise/shift operators in expressions: open item.
+
+## Naming policy
+Full Arabic words. Abbreviation is an exception that needs the user's approval.
+Mnemonic pattern: verb, then width, then modifiers in this order: `_فوري` (immediate), `_بلا_إشارة` (unsigned), `_كلمة` (32-bit W operation). Widths: بايت (8), نصف_كلمة (16), كلمة (32), كلمة_مزدوجة (64). Shifts are named by meaning, not screen direction: رفع = toward the most significant bit, خفض = toward the least significant.
+
+## Registers
+| Arabic | GAS |
+|---|---|
+| سجل + 0..31 | x0..x31 |
+| صفر | zero |
+| عنوان_العودة | ra |
+| مؤشر_المكدس | sp |
+| المؤشر_العام | gp |
+| مؤشر_الخيط | tp |
+| مؤقت + 0..6 | t0..t6 |
+| محفوظ + 0..11 | s0..s11 (s0 is also fp) |
+| وسيط + 0..7 | a0..a7 |
+
+## RV64I mnemonics
+| Arabic | GAS |
+|---|---|
+| جمع | add |
+| جمع_فوري | addi |
+| طرح | sub |
+| جمع_كلمة | addw |
+| جمع_فوري_كلمة | addiw |
+| طرح_كلمة | subw |
+| و_منطقي | and |
+| و_منطقي_فوري | andi |
+| أو_منطقي | or |
+| أو_منطقي_فوري | ori |
+| أو_حصري | xor |
+| أو_حصري_فوري | xori |
+| رفع | sll |
+| رفع_فوري | slli |
+| خفض_منطقي | srl |
+| خفض_منطقي_فوري | srli |
+| خفض_حسابي | sra |
+| خفض_حسابي_فوري | srai |
+| رفع_كلمة | sllw |
+| رفع_فوري_كلمة | slliw |
+| خفض_منطقي_كلمة | srlw |
+| خفض_منطقي_فوري_كلمة | srliw |
+| خفض_حسابي_كلمة | sraw |
+| خفض_حسابي_فوري_كلمة | sraiw |
+| ضبط_إذا_أصغر | slt |
+| ضبط_إذا_أصغر_فوري | slti |
+| ضبط_إذا_أصغر_بلا_إشارة | sltu |
+| ضبط_إذا_أصغر_فوري_بلا_إشارة | sltiu |
+| حمل_بايت | lb |
+| حمل_نصف_كلمة | lh |
+| حمل_كلمة | lw |
+| حمل_كلمة_مزدوجة | ld |
+| حمل_بايت_بلا_إشارة | lbu |
+| حمل_نصف_كلمة_بلا_إشارة | lhu |
+| حمل_كلمة_بلا_إشارة | lwu |
+| خزن_بايت | sb |
+| خزن_نصف_كلمة | sh |
+| خزن_كلمة | sw |
+| خزن_كلمة_مزدوجة | sd |
+| تفرع_إذا_يساوي | beq |
+| تفرع_إذا_لا_يساوي | bne |
+| تفرع_إذا_أصغر | blt |
+| تفرع_إذا_أكبر_أو_يساوي | bge |
+| تفرع_إذا_أصغر_بلا_إشارة | bltu |
+| تفرع_إذا_أكبر_أو_يساوي_بلا_إشارة | bgeu |
+| قفز_وربط | jal |
+| قفز_وربط_بسجل | jalr |
+| حمل_علوي_فوري | lui |
+| جمع_علوي_للعداد | auipc |
+| سياج | fence |
+| نداء_البيئة | ecall |
+| نقطة_توقف | ebreak |
+
+In loads/stores, كلمة is the width (lw/sw); elsewhere a trailing _كلمة is the W modifier. Mnemonics are matched by exact table lookup, so there is no ambiguity.
+
+Pseudo-instructions (Phase 2) need names following the same policy; propose them to the user before implementing.
+
+## Directives
+| Arabic | GAS |
+|---|---|
+| .قسم | .section |
+| .شفرة | .text |
+| .بيانات | .data |
+| .بيانات_للقراءة | .rodata |
+| .بيانات_صفرية | .bss |
+| .عام | .globl |
+| .محاذاة | .align |
+| .بايت | .byte |
+| .نصف_كلمة | .half |
+| .كلمة | .word |
+| .كلمة_مزدوجة | .dword |
+| .سلسلة | .string |
+| .فراغ | .zero |
+| .ثابت | .equ |
+
+Arabic section names map to the standard ELF names (.text, .data, .rodata, .bss) in the output so GNU tools and loaders work. Arabic symbol names are written to ELF as UTF-8 bytes unchanged.
+
+## Diagnostics
+In Arabic. Plan: build each message in file-order convention (same as source, numbers least-significant-first via the shared helper), then reverse the whole line code-point-wise when printing to the plain left-to-right terminal, which reproduces what Vim rightleft shows. Known limitation: the terminal does no Arabic shaping, so letters will not be joined. Keep all message text in one table so wording can change in one place.
+
