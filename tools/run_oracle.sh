@@ -16,7 +16,7 @@ for src in "$ROOT"/tests/asm/*.تجميع; do
     ok=1
     [ -f "$dir/$name.norun" ] && continue
     python3 -I "$ROOT/tools/translit.py" "$src" "$OUT/$name.s" &&
-    "${PREFIX}as" -march=rv64im -mabi=lp64 "$OUT/$name.s" -o "$OUT/$name.o" &&
+    "${PREFIX}as" -march=rv64im -mabi=lp64 -mno-relax "$OUT/$name.s" -o "$OUT/$name.o" &&
     "${PREFIX}ld" -e _بداية "$OUT/$name.o" -o "$OUT/$name" || ok=0
     if [ $ok = 1 ]; then
         qemu-riscv64 "$OUT/$name" > "$OUT/$name.stdout"
