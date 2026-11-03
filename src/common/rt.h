@@ -31,6 +31,11 @@ void rt_exit(int code);
 
 /* Raw allocation. Never returns NULL: exits on failure. */
 void *rt_alloc(size_t size);
+void *rt_realloc(void *p, size_t size);
+void rt_free(void *p);
+
+/* Environment variable, or NULL if unset. */
+const char *rt_getenv(const char *name);
 
 /* Bump allocator. Memory is released all at once with arena_free. */
 typedef struct ArenaBlock ArenaBlock;

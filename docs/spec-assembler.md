@@ -49,8 +49,9 @@ Brackets are allowed and used for grouping in expressions. Because the terminal 
 ## Operand syntax
 - Operand order is the same as GAS (rd, rs1, rs2/imm), read right-to-left.
 - Memory operand: an address expression `سجل + إزاحة`, `سجل - إزاحة`, or just `سجل`. No brackets. GAS `lw a0, 8(sp)` is `حمل_كلمة وسيط٠، مؤشر_المكدس + ٨`. Stores: `خزن_كلمة مصدر، أساس + إزاحة`. jalr: `قفز_وربط_بسجل وجهة، أساس + إزاحة`.
-- Relocation operators: `عالي:رمز` (%hi), `أدنى:رمز` (%lo). PC-relative forms for Phase 2 (proposed: `عالي_نسبي:رمز`, `أدنى_نسبي:رمز`, to be confirmed).
-- Assembler expressions in v1: + - * / and brackets. Bitwise/shift operators in expressions: open item.
+- Relocation operators: `عالي:رمز` (%hi), `أدنى:رمز` (%lo). The operator takes one primary; for symbol + offset use brackets, e.g. `عالي:) رمز + ٤ (` in file order (A16). Allowed in: `حمل_علوي_فوري` (عالي), 12-bit immediates of I-type, loads, stores and `قفز_وربط_بسجل` (أدنى). PC-relative forms for Phase 2 (proposed: `عالي_نسبي:رمز`, `أدنى_نسبي:رمز`, to be confirmed).
+- Assembler expressions in v1: + - * / and brackets, left-associative in file order, `* /` before `+ -` (A8). Bitwise/shift operators in expressions: open item.
+- Branch targets must be labels in the same section (A13); `قفز_وربط` may target any symbol.
 
 ## Naming policy
 Full Arabic words. Abbreviation is an exception that needs the user's approval.

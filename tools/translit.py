@@ -224,8 +224,19 @@ def expr_text(toks):
         kind, val = toks[i]
         if kind == "id" and val in RELOC_OPS and i + 2 < len(toks) \
                 and toks[i + 1] == ("punct", ":"):
-            out.append(f"{RELOC_OPS[val]}({symbol_text(toks[i + 2][1])})")
-            i += 3
+            j = i + 3
+            if toks[i + 2] in (("punct", ")"), ("punct", "]")):
+                depth = 0
+                for j in range(i + 2, len(toks)):
+                    if toks[j] in (("punct", ")"), ("punct", "]")):
+                        depth += 1
+                    elif toks[j] in (("punct", "("), ("punct", "[")):
+                        depth -= 1
+                        if depth == 0:
+                            break
+                j += 1
+            out.append(f"{RELOC_OPS[val]}({expr_text(toks[i + 2:j])})")
+            i = j
             continue
         if kind == "num":
             out.append(str(val))

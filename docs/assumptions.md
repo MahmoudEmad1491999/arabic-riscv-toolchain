@@ -16,3 +16,19 @@ These are decisions taken to keep moving while they are unconfirmed. Each one is
 | A10 | `.شفرة`, `.بيانات`, `.بيانات_للقراءة`, `.بيانات_صفرية` work both as stand-alone directives (like GAS `.text`) and as section names after `.قسم`. | Mirrors GAS. | — |
 | A11 | Until pc-relative relocations exist (Phase 2), test programs take addresses with `حمل_علوي_فوري` + `عالي:` and `جمع_فوري` + `أدنى:` (absolute, non-PIE, GNU ld default base). | Phase 1 has no pseudo-instructions. | — |
 | A12 | Proposed names, not yet used: pc-relative relocation operators `عالي_نسبي:` / `أدنى_نسبي:`. Pseudo-instruction names will be proposed before Phase 2. | Naming policy needs user approval. | Decide before Phase 2. |
+
+## Added in Phase 1 (assembler v0)
+
+| # | Assumption | Why | How to confirm or change |
+|---|---|---|---|
+| A13 | Branch targets (`تفرع_إذا_…`) must be a label in the **same section** plus an optional constant. Branches to undefined/external symbols are an error. | GNU as silently turns such a branch into an inverted branch plus a jump (two instructions). That is a pseudo-instruction job; it belongs to Phase 2. | Revisit when pseudo-instructions are designed. |
+| A14 | A constant from `.ثابت` may be used in instruction operands **before** the line that defines it (resolved in pass 2). Places that need the value immediately (`.فراغ`, `.محاذاة`, `.ثابت`) need it defined earlier. | Natural two-pass behaviour. GNU as rejects the forward use, so the differential fuzzer skips those cases. | — |
+| A15 | `.محاذاة` always aligns, also inside `.شفرة`. Code padding follows GNU: a zero byte to an even offset, a 2-byte `0x0001`, then 4-byte nops. `.شفرة` is padded at its end to its alignment, like GNU. | GNU as ignores `.align 0..2` inside code when data bytes made the offset odd; we treat that as a GNU quirk, not something to copy. | — |
+| A16 | A relocation operator applies to one primary: `عالي:رمز`. For symbol + offset use brackets: `عالي:) رمز + ٤ (` (file order, `)` opens). The operator must be the whole operand. | Unambiguous and easy to read. | — |
+| A17 | A symbol difference `أ - ب` is a constant when both labels are in the same section; anything else with two symbols is an error. | Enough for lengths (`.ثابت طول، نهاية - رسالة`). | — |
+| A18 | Diagnostics display (refines A2): the line is reversed, then runs of Latin characters (paths) are reversed back so they stay readable. `DIAG_ORDER=file` prints file order (used by the tests). | Paths on the command line are usually Latin. | Look at a real error in your terminal and say if the layout is wrong. |
+| A19 | The assembler binary is `مجمع`; usage `مجمع دخل.تجميع خرج.o`. No options yet. Exit codes: 0 ok, 1 source errors, 2 usage or I/O. | Full-word naming. | — |
+| A20 | Only the four standard sections exist; `.قسم` with any other name is an error. | Enough for Phase 1. | Phase 2 if needed. |
+| A21 | Objects are produced as GNU `as -mno-relax` would: no `R_RISCV_RELAX` and no linker relaxation. Relocations always name the target symbol (local labels included), with field contents exactly as GNU writes them. | Makes byte-for-byte comparison possible; relaxation can come with our own linker. | — |
+| A22 | Numeric local labels are emitted as GNU-style `.L<n>^B<k>` local symbols, and only when referenced. | Identical symbol tables to GNU. | — |
+| A23 | Register names are reserved: they (and `عالي`, `أدنى`) cannot be used as label or constant names. A register number written with a redundant zero (e.g. `وسيط٠٠`) is not a register. | Avoids ambiguity. | — |

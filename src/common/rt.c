@@ -72,6 +72,27 @@ void *rt_alloc(size_t size)
     return p;
 }
 
+void *rt_realloc(void *p, size_t size)
+{
+    void *q = realloc(p, size == 0 ? 1 : size);
+    if (q == NULL) {
+        static const char msg[] = "out of memory\n";
+        rt_write(RT_STDERR, (const uint8_t *)msg, sizeof msg - 1);
+        rt_exit(2);
+    }
+    return q;
+}
+
+void rt_free(void *p)
+{
+    free(p);
+}
+
+const char *rt_getenv(const char *name)
+{
+    return getenv(name);
+}
+
 #define ARENA_BLOCK_SIZE (1u << 20)
 
 void arena_init(Arena *a)

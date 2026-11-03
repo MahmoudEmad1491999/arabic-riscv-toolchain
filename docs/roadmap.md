@@ -17,3 +17,13 @@
 - [x] Shared C modules: runtime layer, UTF-8, character classes, numbers (+ unit tests)
 - [x] Transliterator (tools/translit.py) and oracle runner
 - [x] Arabic hello world runs via the oracle path
+
+## Phase 1 status
+
+- [x] Lexer with every lexical rule and error of the spec
+- [x] Two-pass assembler: all RV64I instructions, all directives, `عالي:`/`أدنى:` relocations, numeric local labels
+- [x] ELF64 relocatable output, linkable with GNU ld
+- [x] Arabic diagnostics (A2, A18)
+- [x] Tests: every instruction compared with GNU as (`tests/asm/كل_التعليمات.تجميع`), programs run under qemu, 42 error tests, differential fuzzing (`make fuzz`)
+
+Next (Phase 2): name the pseudo-instructions and pc-relative relocation operators (needs the owner's decisions), then implement them and the M extension.
