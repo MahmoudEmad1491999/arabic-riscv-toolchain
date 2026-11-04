@@ -1,0 +1,40 @@
+// Internals of مجمع (src/as + src/common).
+digraph assembler {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=11, nodesep=0.3, ranksep=0.35, compound=true,
+         label="مجمع — assembler architecture", labelloc=t];
+  node  [fontname="Helvetica", fontsize=10, shape=box, style="rounded,filled", fillcolor="#eef3fb", color="#4a6fa5"];
+  edge  [fontname="Helvetica", fontsize=9, color="#4a6fa5"];
+
+  file  [label="rt_read_file\n(rt.c: the only OS layer)", fillcolor="#fff7e0", color="#b08a2e"];
+  utf8  [label="utf8_decode_all\nstrict UTF-8 → uint32_t code points\n(utf8.c)"];
+  lex   [label="lex()\nhand-written scanner → TokenList\nnumbers via num_parse (LSD-first)\nmirrored brackets, escapes, char classes\n(lexer.c, number.c, chars.c)"];
+
+  subgraph cluster_core {
+    label="as.c — same parser runs twice"; fontname="Helvetica"; fontsize=10; color="#9bb3d6"; style="rounded";
+    stmt  [label="statement()\nlabels → directive | instruction | pseudo"];
+    expr  [label="parse_operand / parse_expr\nrecursive descent, 2 precedence levels\nValue = constant + symbol + reloc op"];
+    p1    [label="pass 1\ndefine labels, .ثابت constants\nemit placeholder bytes → final offsets"];
+    p2    [label="pass 2\nevaluate, range-check, encode\nR/I/S/B/U/J, record relocations"];
+    pseudo[label="pseudo()\nGNU-identical expansions\nحمل_قيمة = load_const recursion"];
+    stmt -> expr;
+    stmt -> pseudo;
+    p1 -> p2 [label="if no errors"];
+  }
+
+  tables [label="tables.c\nInsnDef[] mnemonics (RV64IM + pseudo)\nregisters, directives, reloc operators", shape=cylinder, fillcolor="#f0ecf8", color="#7a5aa6"];
+  syms   [label="Symbol hash table\nFNV-1a, 4096 buckets, chaining\n+ creation-order array", shape=cylinder, fillcolor="#f0ecf8", color="#7a5aa6"];
+  secs   [label="Section[4]\n.text .data .rodata .bss\nBuf data + Buf<Reloc> + align", shape=cylinder, fillcolor="#f0ecf8", color="#7a5aa6"];
+  elf    [label="as_write_elf\nsymtab (locals then globals), strtab,\nshstrtab, .rela.*, section headers"];
+  out    [label="object.o", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  diag   [label="diag.c\nArabic message table, built in file order,\nreversed for an LTR terminal", fillcolor="#fdecea", color="#b5524a"];
+
+  file -> utf8; utf8 -> lex;
+  lex -> stmt [lhead=cluster_core];
+  stmt -> tables [style=dotted];
+  expr -> syms [style=dotted];
+  p1 -> syms [label="define"];
+  p2 -> secs [label="bytes + relocs"];
+  secs -> elf; syms -> elf; elf -> out;
+  lex -> diag [style=dashed, color="#b5524a"];
+  p2 -> diag [style=dashed, color="#b5524a"];
+}

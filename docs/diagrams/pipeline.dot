@@ -1,0 +1,38 @@
+// Overall pipeline and the test oracles around it.
+digraph pipeline {
+  graph [rankdir=LR, fontname="Helvetica", fontsize=11, nodesep=0.35, ranksep=0.45,
+         label="Arabic RISC-V toolchain: build pipeline (solid) and test oracles (dashed)", labelloc=t];
+  node  [fontname="Helvetica", fontsize=10, shape=box, style="rounded,filled", fillcolor="#eef3fb", color="#4a6fa5"];
+  edge  [fontname="Helvetica", fontsize=9, color="#4a6fa5"];
+
+  src   [label="source.تجميع\n(UTF-8, file order:\nnumbers LSD-first)", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  as    [label="مجمع\nassembler (C11)", fillcolor="#d7e6fb"];
+  obj   [label="object.o\nELF64 REL, EM_RISCV", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  ld    [label="رابط\nlinker (C11)", fillcolor="#d7e6fb"];
+  exe   [label="executable\nELF64 EXEC, static", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  qemu  [label="qemu-riscv64\n(Linux user mode)", fillcolor="#e8f5e9", color="#4b8b4f"];
+  check [label="expected\nstdout + exit code", shape=note, fillcolor="#e8f5e9", color="#4b8b4f"];
+
+  src -> as -> obj -> ld -> exe -> qemu -> check;
+  obj2  [label="other .o files", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  obj2 -> ld;
+
+  node  [fillcolor="#f4f4f4", color="#888888"];
+  edge  [style=dashed, color="#888888"];
+  translit [label="translit.py\nArabic → GNU syntax"];
+  gas      [label="GNU as\n-mno-relax"];
+  refobj   [label="reference .o", shape=note];
+  elfcmp   [label="elfcmp.py\nbytes, symbols,\nrelocations"];
+  script   [label="execcmp.py script\nGNU ld script at\nour addresses"];
+  gld      [label="GNU ld"];
+  refexe   [label="reference exe", shape=note];
+  execcmp  [label="execcmp.py compare\nloaded image, entry,\nsymbol values"];
+  fuzz     [label="diff_fuzz.py\nreshuffled programs", shape=component];
+
+  src -> translit -> gas -> refobj -> elfcmp;
+  obj -> elfcmp;
+  exe -> script -> gld;
+  obj -> gld -> refexe -> execcmp;
+  exe -> execcmp;
+  fuzz -> src [label="generates"];
+}
