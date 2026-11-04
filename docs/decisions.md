@@ -11,3 +11,7 @@ Decisions made by the project owner. Newest last.
 7. The toolchain is for personal use. Portability and converter tools come later.
 8. Code lives in a private GitHub repository.
 9. Pseudo-instruction names approved: حمل_قيمة، حمل_عنوان، نسخ، نفي، سالب، لا_عملية، قفز، قفز_بسجل، استدعاء، استدعاء_أخير، عودة، تفرع_إذا_صفر، تفرع_إذا_ليس_صفرا، تفرع_إذا_أكبر، تفرع_إذا_أصغر_أو_يساوي (+_بلا_إشارة); pc-relative operators عالي_نسبي: / أدنى_نسبي:.
+10. One codebase, two object formats: ELF (kept permanently, it is the bridge to GNU's tools for testing) and our own format. No separate long-lived branches.
+11. Our object format is designed in Phase 4, together with the language's linkage model, so each symbol kind maps one-to-one to a language keyword.
+12. Our format comes in two forms: binary (what the tools and the loader read) and text (for people to read; never executed).
+13. We will have our own executable format and our own loader (Phase 5).

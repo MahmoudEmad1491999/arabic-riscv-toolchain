@@ -6,7 +6,7 @@ Sources are written in Vim Arabic mode on a terminal with no BiDi, so files are 
 
 ## Status
 
-Phases 1–3 are done. `مجمع` assembles RV64IM plus the pseudo-instructions (`حمل_قيمة`, `حمل_عنوان`, `استدعاء`, `عودة`, ...) into ELF objects identical to GNU as (`-mno-relax`). `رابط` links them into static executables whose loaded image matches GNU ld at the same addresses. Next is Phase 4, the language. See [docs/roadmap.md](docs/roadmap.md).
+Phases 1–3 are done. `مجمع` assembles RV64IM plus the pseudo-instructions (`حمل_قيمة`, `حمل_عنوان`, `استدعاء`, `عودة`, ...) into ELF objects identical to GNU as (`-mno-relax`). `رابط` links them into static executables whose loaded image matches GNU ld at the same addresses. Next is Phase 4: the language, its compiler, and our own object format (binary + readable text) next to ELF. Phase 5 adds our own executable format and loader. See [docs/roadmap.md](docs/roadmap.md).
 
 ## Documents
 

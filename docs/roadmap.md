@@ -6,9 +6,10 @@
 | 1 | Assembler v0 in C: RV64I, one file, no pseudo-instructions, two passes, `عالي:`/`أدنى:` relocations, ELF64 relocatable `.o`. | Every test file produces section bytes, symbols and relocations identical to GNU as on the transliteration; linked programs run under qemu. |
 | 2 | Assembler v1: pseudo-instructions, pc-relative relocations, full expressions, all directives, M extension. | Same byte comparison on a larger corpus. |
 | 3 | Linker: static ELF linking. | Output matches GNU ld behaviour; programs run. |
-| 4 | Language design and compiler in C, emitting Arabic assembly. | Compiler test suite runs end to end on our assembler and linker. |
-| 5 | Bootstrap: assembler, linker and compiler rewritten in the new language. | Stage 2 and stage 3 binaries are byte-identical. |
-| 6 | Expansion: C, F/D, A extensions, RV32, debug info. | — |
+| 4 | Language design and compiler in C, emitting Arabic assembly. Together with the language's linkage model (which kinds of symbols the language has), design our own object format: a binary form for the tools and a text form for people to read (read-only, never executed). Add it to `مجمع` and `رابط` next to ELF, in the same codebase. | Compiler test suite runs end to end on our assembler and linker. Every test links to the identical executable from ELF objects and from our objects. |
+| 5 | Own executable format and our own loader. The Linux kernel only starts ELF, so the loader is a small static ELF program, built with our tools: it reads an executable in our format, maps its segments, sets up the stack (arguments, environment) and jumps to the entry point. | Every test program runs both as an ELF executable and through our loader, with the same output and exit code. |
+| 6 | Bootstrap: assembler, linker, compiler and loader rewritten in the new language. | Stage 2 and stage 3 binaries are byte-identical. |
+| 7 | Expansion: C, F/D, A extensions, RV32, debug info, a bare-metal loader for `qemu-system-riscv64` (no Linux underneath). | — |
 
 ## Phase 0 status
 
@@ -45,4 +46,4 @@
 - [x] Tests: every runnable program is linked by `رابط` and by GNU ld at the same addresses, and the loaded images are compared; a three-file program; the encoding tests linked against a stub (all relocation types); link-error tests; corrupted-object fuzzing; differential fuzzing now links too
 - [ ] Static archives (`.a`): with the runtime library in Phase 4
 
-Next: Phase 4, the language and its compiler. This starts with design discussions.
+Next: Phase 4, the language and its compiler. This starts with design discussions, including the linkage model and our object format.
