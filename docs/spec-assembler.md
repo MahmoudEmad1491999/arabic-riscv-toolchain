@@ -154,7 +154,7 @@ Arabic section names map to the standard ELF names (.text, .data, .rodata, .bss)
 In Arabic. Plan: build each message in file-order convention (same as source, numbers least-significant-first via the shared helper), then reverse the whole line code-point-wise when printing to the plain left-to-right terminal, which reproduces what Vim rightleft shows. Known limitation: the terminal does no Arabic shaping, so letters will not be joined. Keep all message text in one table so wording can change in one place.
 
 
-## M extension (assumption A24: names not yet approved)
+## M extension (approved, decision 14)
 | Arabic | GAS |
 |---|---|
 | ضرب | mul |

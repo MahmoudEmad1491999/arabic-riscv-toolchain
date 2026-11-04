@@ -15,3 +15,4 @@ Decisions made by the project owner. Newest last.
 11. Our object format is designed in Phase 4, together with the language's linkage model, so each symbol kind maps one-to-one to a language keyword.
 12. Our format comes in two forms: binary (what the tools and the loader read) and text (for people to read; never executed).
 13. We will have our own executable format and our own loader (Phase 5).
+14. M extension names approved (ضرب، ضرب_عالي، ضرب_عالي_بإشارة_وبلا_إشارة، ضرب_عالي_بلا_إشارة، قسمة، قسمة_بلا_إشارة، باقي، باقي_بلا_إشارة and the _كلمة forms). Assumption A24 is now a decision.

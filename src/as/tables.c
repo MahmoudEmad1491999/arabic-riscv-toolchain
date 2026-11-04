@@ -36,7 +36,7 @@ static const InsnDef insns[] = {
     {"خفض_منطقي_كلمة",       FMT_R, OP_OP32, 5, 0x00, 0, P_NONE},
     {"خفض_حسابي_كلمة",       FMT_R, OP_OP32, 5, 0x20, 0, P_NONE},
 
-    /* M extension (assumption A24: names pending the owner's approval) */
+    /* M extension (decision 14) */
     {"ضرب",                          FMT_R, OP_OP,   0, 0x01, 0, P_NONE},
     {"ضرب_عالي",                     FMT_R, OP_OP,   1, 0x01, 0, P_NONE},
     {"ضرب_عالي_بإشارة_وبلا_إشارة",    FMT_R, OP_OP,   2, 0x01, 0, P_NONE},
