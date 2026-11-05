@@ -89,7 +89,7 @@ int ty_equal(const Type *a, const Type *b)
         return a->bits == b->bits && a->is_signed == b->is_signed && a->is_size == b->is_size;
     case T_PTR:
     case T_SLICE:
-        return a->readonly == b->readonly && ty_equal(a->elem, b->elem);
+        return a->readonly == b->readonly && a->vol == b->vol && ty_equal(a->elem, b->elem);
     case T_OPT:
         return ty_equal(a->elem, b->elem);
     case T_ARRAY:
@@ -195,7 +195,12 @@ static void nb_type(const Type *t)
         break;
     case T_BOOL: nb_str("منطقي"); break;
     case T_CHAR: nb_str("حرف"); break;
-    case T_PTR: nb_str("^"); if (t->readonly) nb_str("ثابت "); nb_type(t->elem); break;
+    case T_PTR:
+        nb_str("^");
+        if (t->readonly) nb_str("ثابت ");
+        if (t->vol) nb_str("متطاير ");
+        nb_type(t->elem);
+        break;
     case T_OPT: nb_str("اختياري "); nb_type(t->elem); break;
     case T_ARRAY: nb_str("]"); nb_num(t->count); nb_str("["); nb_type(t->elem); break;
     case T_SLICE: nb_str("]["); if (t->readonly) nb_str("ثابت "); nb_type(t->elem); break;

@@ -43,7 +43,7 @@ int tool_assemble(const uint8_t *text, size_t len, const char *name, const char 
     return rc;
 }
 
-int tool_link(const char *out, const char *const *inputs, size_t n)
+int tool_link(const char *out, const char *const *inputs, size_t n, int bare)
 {
     Arena arena;
     Linker ld;
@@ -52,6 +52,7 @@ int tool_link(const char *out, const char *const *inputs, size_t n)
 
     arena_init(&arena);
     ld_init(&ld, &arena);
+    if (bare) ld.base = LD_BASE_BARE;
     for (i = 0; i < n; i++) {
         if (ld_read_object(&ld, inputs[i]) != 0) {
             rc = -1;

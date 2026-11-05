@@ -26,6 +26,7 @@ enum {
 };
 
 #define LD_BASE      0x10000u
+#define LD_BASE_BARE 0x80000000u  /* RAM of QEMU virt: --عاري (decision 39) */
 #define LD_PAGE      0x1000u
 
 typedef struct GlobalSym GlobalSym;
@@ -88,6 +89,8 @@ typedef struct {
     Buf out_data[OUT_COUNT];  /* contents (not for .bss) */
     uint64_t entry;
     int nphdr;
+    uint64_t base;            /* LD_BASE, or LD_BASE_BARE for a bare-metal image */
+    uint64_t seg_off;         /* file offset of the first segment (bare: one page) */
     Buf libs;                 /* LibMember: members of .مكتبة files not linked yet */
     Buf lib_files;            /* RtBuf of each library file */
 } Linker;

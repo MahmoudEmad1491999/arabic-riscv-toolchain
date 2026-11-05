@@ -75,7 +75,12 @@ static void type(Pr *p, const Type *t)
         break;
     case T_BOOL: s(p, "منطقي"); break;
     case T_CHAR: s(p, "حرف"); break;
-    case T_PTR: s(p, "^"); if (t->readonly) s(p, "ثابت "); type(p, t->elem); break;
+    case T_PTR:
+        s(p, "^");
+        if (t->readonly) s(p, "ثابت ");
+        if (t->vol) s(p, "متطاير ");
+        type(p, t->elem);
+        break;
     case T_OPT: s(p, "اختياري "); type(p, t->elem); break;
     case T_ARRAY: s(p, "]"); num(p, t->count); s(p, "["); type(p, t->elem); break;
     case T_SLICE: s(p, "]["); if (t->readonly) s(p, "ثابت "); type(p, t->elem); break;
@@ -232,7 +237,7 @@ int iface_text(Module *m, Buf *out)
             value(&p, d);
             s(&p, "؛\n");
         } else if (d->kind == D_VAR) {
-            s(&p, "عام متغير ");
+            s(&p, d->is_volatile ? "عام متغير متطاير " : "عام متغير ");
             b(&p, d->name, d->len);
             s(&p, ": ");
             type(&p, d->type);

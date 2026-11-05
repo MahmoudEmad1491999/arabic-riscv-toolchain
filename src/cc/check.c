@@ -237,6 +237,28 @@ static Type *self_type(Ctx *c, Decl *d)
     return d->self_type;
 }
 
+/* متطاير applies to scalars of 1, 2, 4 or 8 bytes only (decision 41):
+ * their accesses are single, untorn loads and stores. */
+static int volatile_ok(const Type *t)
+{
+    switch (t->kind) {
+    case T_INT: case T_BOOL: case T_CHAR: case T_ENUM: case T_PTR: case T_OPT: case T_FUNC:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+int expr_is_volatile(const Expr *e)
+{
+    switch (e->kind) {
+    case E_DEREF: return e->a->type != NULL && e->a->type->kind == T_PTR && e->a->type->vol;
+    case E_NAME:
+    case E_MEMBER: return e->ref == REF_GLOBAL && e->decl != NULL && e->decl->is_volatile;
+    default: return 0;
+    }
+}
+
 /* Resolves names and array lengths. by_value: the type's size is needed
  * (a field or element stored inline), so structures must be laid out. */
 static Type *resolve_type(Ctx *c, Type *t, int by_value)
@@ -260,6 +282,10 @@ static Type *resolve_type(Ctx *c, Type *t, int by_value)
     case T_SLICE:
         t->elem = resolve_type(c, t->elem, 0);
         if (t->elem == NULL) return NULL;
+        if (t->kind == T_PTR && t->vol && !volatile_ok(t->elem)) {
+            err(&t->tok, D_CC_VOLATILE_TYPE, NULL);
+            return NULL;
+        }
         if (t->kind == T_OPT && t->elem->kind != T_PTR) return NULL;
         return t;
     case T_ARRAY:
@@ -454,7 +480,9 @@ static int assignable(const Type *from, const Type *to)
 {
     if (ty_equal(from, to)) return 1;
     if (from->kind == T_PTR && to->kind == T_PTR) {
-        return !from->readonly && to->readonly && ty_equal(from->elem, to->elem);
+        /* may gain ثابت or متطاير, never lose them */
+        return (!from->readonly || to->readonly) && (!from->vol || to->vol) &&
+               ty_equal(from->elem, to->elem);
     }
     if (from->kind == T_SLICE && to->kind == T_SLICE) {
         return !from->readonly && to->readonly && ty_equal(from->elem, to->elem);
@@ -1148,6 +1176,7 @@ static int check_expr(Ctx *c, Expr *e, Type *want)
         if (!is_lvalue(e->a)) return err(&e->tok, D_CC_NOT_LVALUE, NULL);
         if (in_packed(e->a)) return err(&e->tok, D_CC_PACKED_ADDR, NULL);
         e->type = ptr_to(c, e->a->type, !is_writable(e->a));
+        e->type->vol = expr_is_volatile(e->a);
         return 0;
     case E_UNARY:
         return check_unary(c, e, want);
@@ -1311,6 +1340,7 @@ static int check_stmt(Ctx *c, Stmt *s, int *terminates)
         return check_block(c, s, terminates);
     case S_VAR: {
         Local *l = s->local;
+        if (s->vol) return err(&s->tok, D_CC_VOLATILE_PLACE, NULL);
         l->type = resolve_type(c, l->type, 1);
         if (l->type == NULL) return -1;
         if (s->uninit) {
@@ -1553,11 +1583,16 @@ int check_program(Program *p)
             switch (d->kind) {
             case D_STRUCT: if (layout_struct(&c, d) != 0) rc = -1; break;
             case D_ENUM: if (resolve_enum(&c, d) != 0) rc = -1; break;
-            case D_CONST: if (resolve_const(&c, d) != 0) rc = -1; break;
+            case D_CONST:
+                if (d->is_volatile) rc = err(&d->tok, D_CC_VOLATILE_PLACE, NULL);
+                else if (resolve_const(&c, d) != 0) rc = -1;
+                break;
             case D_FUNC: if (resolve_signature(&c, d) != 0) rc = -1; break;
             case D_VAR:
                 d->type = resolve_type(&c, d->type, 1);
-                if (d->init == NULL) { /* interface: defined in the module's object */
+                if (d->type != NULL && d->is_volatile && !volatile_ok(d->type)) {
+                    rc = err(&d->tok, D_CC_VOLATILE_TYPE, NULL);
+                } else if (d->init == NULL) { /* interface: defined in the module's object */
                     if (d->type == NULL) rc = -1;
                 } else if (d->type == NULL ||
                     check_expr(&c, d->init, d->type) != 0 || coerce(&c, d->init, d->type) != 0 ||

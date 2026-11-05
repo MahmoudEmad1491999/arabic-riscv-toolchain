@@ -109,8 +109,10 @@ static Type *parse_type(Parser *p)
         next(p);
         ty = ty_new(p->arena, T_PTR);
         ty->tok = *t;
-        if (is(p, K_CONST)) {
-            ty->readonly = 1;
+        for (;;) { /* ^ثابت, ^متطاير, both in either order */
+            if (is(p, K_CONST) && !ty->readonly) ty->readonly = 1;
+            else if (is(p, K_VOLATILE) && !ty->vol) ty->vol = 1;
+            else break;
             next(p);
         }
         ty->elem = parse_type(p);
@@ -627,6 +629,10 @@ static Stmt *parse_var(Parser *p, int is_const)
 {
     Stmt *s = new_stmt(p, is_const ? S_CONST : S_VAR, cur(p));
     next(p);
+    if (is(p, K_VOLATILE)) {
+        s->vol = 1;
+        next(p);
+    }
     s->local = parse_binding(p);
     if (s->local == NULL || expect(p, K_ASSIGN) != 0) return NULL;
     if (!is_const && is(p, K_UNINIT)) {
@@ -921,6 +927,7 @@ static Decl *parse_global(Parser *p, int pub, int is_const)
     if (s == NULL) return NULL;
     d = new_decl(p, is_const ? D_CONST : D_VAR, &s->local->tok);
     d->is_public = pub;
+    d->is_volatile = s->vol;
     d->type = s->local->type;
     d->init = s->e1;
     if (s->uninit && !p->module->interface_only) {

@@ -66,7 +66,7 @@ tools/         translit.py (Arabic -> GNU syntax, oracle only), elfcmp.py, execc
 Requirements (Debian/Ubuntu):
 
 ```sh
-sudo apt install build-essential python3 binutils-riscv64-linux-gnu qemu-user
+sudo apt install build-essential python3 binutils-riscv64-linux-gnu qemu-user qemu-system-misc
 ```
 
 ```sh
@@ -75,6 +75,7 @@ make oracle   # every tests/asm/*.تجميع -> translit.py -> GNU as/ld -> qemu
 make asm      # our assembler vs GNU as on every test + error tests (linked with رابط)
 make link     # our linker vs GNU ld: multi-file programs, coverage, errors
 make cc       # the غرة compiler: programs run under qemu + compile-error tests
+make os       # the operating system: bare-metal kernels on qemu-system-riscv64
 make test     # all of the above
 make fuzz     # differential fuzzing against GNU as and GNU ld (slower)
 ```

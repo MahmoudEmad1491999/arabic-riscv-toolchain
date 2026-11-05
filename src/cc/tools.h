@@ -11,6 +11,6 @@ int tool_assemble(const uint8_t *text, size_t len, const char *name, const char 
                   const uint8_t *iface, size_t iface_len);
 
 /* Links the inputs (objects, archives) into the executable out. */
-int tool_link(const char *out, const char *const *inputs, size_t n);
+int tool_link(const char *out, const char *const *inputs, size_t n, int bare);
 
 #endif

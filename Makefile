@@ -17,7 +17,7 @@ LIB_SRC    := src/lib/main.c
 LIB_BIN    := $(BUILD)/محزم
 OBJ_BIN    := $(BUILD)/عارض
 
-.PHONY: all test unit oracle asm link cc objfmt build-mode fuzz spec spec-check clean
+.PHONY: all test unit oracle asm link cc objfmt build-mode os fuzz spec spec-check clean
 
 all: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(OBJ_BIN) $(LIB_BIN) $(BUILD)/test_common
 
@@ -73,6 +73,10 @@ objfmt: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(OBJ_BIN) $(LIB_BIN)
 build-mode: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(LIB_BIN)
 	./tools/run_build_tests.sh
 
+# The operating system (os/): bare-metal kernels on qemu-system-riscv64.
+os: $(AS_BIN) $(LD_BIN) $(CC_BIN)
+	./tools/run_os_tests.sh
+
 # Random programs: ours vs GNU as and GNU ld (slow; not part of `make test`).
 fuzz: $(AS_BIN) $(LD_BIN)
 	./tools/diff_fuzz.py 500
@@ -86,7 +90,7 @@ spec-check:
 	python3 -I tools/gen_spec.py docs/spec-language.src.md $(BUILD)/spec-language.md
 	cmp -s $(BUILD)/spec-language.md docs/spec-language.md || { echo "docs/spec-language.md is stale: run make spec"; exit 1; }
 
-test: unit oracle asm link cc objfmt build-mode spec-check
+test: unit oracle asm link cc objfmt build-mode os spec-check
 
 clean:
 	rm -rf $(BUILD)

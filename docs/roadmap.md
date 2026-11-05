@@ -7,9 +7,9 @@
 | 2 | Assembler v1: pseudo-instructions, pc-relative relocations, full expressions, all directives, M extension. | Same byte comparison on a larger corpus. |
 | 3 | Linker: static ELF linking. | Output matches GNU ld behaviour; programs run. |
 | 4 | Language design and compiler in C, emitting Arabic assembly. Together with the language's linkage model (which kinds of symbols the language has), design our own object format: a binary form for the tools and a text form for people to read (read-only, never executed). Add it to `مجمع` and `رابط` next to ELF, in the same codebase. | Compiler test suite runs end to end on our assembler and linker. Every test links to the identical executable from ELF objects and from our objects. |
-| 5 | Own executable format and our own loader. The Linux kernel only starts ELF, so the loader is a small static ELF program, built with our tools: it reads an executable in our format, maps its segments, sets up the stack (arguments, environment) and jumps to the entry point. | Every test program runs both as an ELF executable and through our loader, with the same output and exit code. |
-| 6 | Bootstrap: assembler, linker, compiler and loader rewritten in the new language. | Stage 2 and stage 3 binaries are byte-identical. |
-| 7 | Expansion: C, F/D, A extensions, RV32, debug info, a bare-metal loader for `qemu-system-riscv64` (no Linux underneath). | — |
+| 5 | Operating system in غرة, bare-metal on `qemu-system-riscv64 -machine virt -bios none` (decisions 39–43). Stages, each running in QEMU and tested by `make test`: (1) bare-metal link layout, `متطاير`, our machine-mode start, `مرحبا` on the UART, power-off with an exit code; (2) traps, the timer interrupt, entry into supervisor mode; (3) physical page allocator, Sv39 paging; (4) user mode, system calls (`نظام`), processes, scheduler; (5) virtio-blk driver, a simple file system; (6) our executable format and its loader in the kernel, a shell with Arabic commands. | A shell started by the kernel loads and runs programs in our executable format from the disk. |
+| 6 | Bootstrap: assembler, linker and compiler rewritten in the new language. | Stage 2 and stage 3 binaries are byte-identical. |
+| 7 | Expansion: C, F/D, A extensions, RV32, debug info, multi-core (A extension). | — |
 
 ## Phase 0 status
 
@@ -57,3 +57,12 @@
 - [x] Object format step B: module interfaces with FNV-1a hashes, libraries (`.مكتبة`, `محزم`); separate compilation; `مترجم` building the executable in one command
 - [x] `بنية مضغوطة`, calls with more than eight argument words
 - [ ] More of the standard library (files, memory, strings)
+
+## Phase 5 status (operating system)
+
+- [x] Stage 1: bare-metal link layout (`--عاري`), `متطاير` (decision 41), our own start code with no firmware, UART driver and power-off device in غرة, `مرحبا من نظام غرة` on QEMU, language stops on the UART, `make os`
+- [ ] Stage 2: CSR instructions in `مجمع`, machine-mode traps and the timer interrupt in غرة, entry into supervisor mode
+- [ ] Stage 3: physical page allocator, Sv39 paging
+- [ ] Stage 4: user mode, system calls (`نظام`), processes, scheduler
+- [ ] Stage 5: virtio-blk driver, a simple file system
+- [ ] Stage 6: our executable format and its loader in the kernel, a shell with Arabic commands

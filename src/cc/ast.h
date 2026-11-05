@@ -32,7 +32,7 @@ typedef enum {
     K_OPEN_BRACE, K_CLOSE_BRACE,     /* } {  */
     K_OPEN_SQUARE, K_CLOSE_SQUARE,   /* ] [  */
     /* keywords */
-    K_IMPORT, K_AS, K_PUBLIC, K_EXTERN, K_FUNC, K_VAR, K_CONST, K_STRUCT, K_PACKED,
+    K_IMPORT, K_AS, K_PUBLIC, K_EXTERN, K_FUNC, K_VAR, K_CONST, K_STRUCT, K_PACKED, K_VOLATILE,
     K_ENUM, K_IF, K_ELSE, K_FOUND, K_WHILE, K_DO, K_FOR, K_FROM, K_BEFORE, K_IN,
     K_SWITCH, K_CASE, K_BREAK, K_CONTINUE, K_RETURN, K_TRUE, K_FALSE, K_NULL,
     K_UNINIT, K_OPTIONAL, K_AND, K_OR, K_NOT, K_BAND, K_BOR, K_BXOR, K_BNOT,
@@ -82,6 +82,7 @@ struct Type {
     int is_signed;        /* T_INT */
     int is_size;          /* T_INT: حجم */
     int readonly;         /* T_PTR, T_SLICE: elements cannot be written */
+    int vol;              /* T_PTR: points to متطاير (decision 41) */
     Type *elem;           /* T_PTR, T_OPT, T_ARRAY, T_SLICE; T_FUNC: result */
     uint64_t count;       /* T_ARRAY */
     Decl *decl;           /* T_STRUCT, T_ENUM */
@@ -193,6 +194,7 @@ struct Stmt {
     Expr *e1, *e2;        /* condition / value / target */
     Type *decl_type;
     int uninit;
+    int vol;              /* متغير متطاير */
     Stmt *then_s, *else_s;
     Case *cases;
     size_t ncases;
@@ -231,6 +233,7 @@ struct Decl {
     int is_public;
     int is_extern;        /* خارجي: no body, raw symbol */
     int raw_export;       /* عام خارجي دالة: body, raw symbol */
+    int is_volatile;      /* متغير متطاير (decision 41) */
     /* functions */
     Local **params;
     size_t nparams;

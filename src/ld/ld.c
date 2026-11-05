@@ -87,6 +87,7 @@ void ld_init(Linker *ld, Arena *a)
     int k;
     memset(ld, 0, sizeof *ld);
     ld->arena = a;
+    ld->base = LD_BASE;
     buf_init(&ld->libs);
     buf_init(&ld->lib_files);
     buf_init(&ld->globals);
@@ -497,15 +498,20 @@ static int layout(Linker *ld)
 
     ld->nphdr = (ld->out_size[OUT_DATA] + ld->out_size[OUT_BSS]) != 0 ? 2 : 1;
     hdr = ELF_EHDR_SIZE + (uint64_t)ld->nphdr * 56u;
-    ld->out_addr[OUT_TEXT] = align_up(LD_BASE + hdr, ld->out_align[OUT_TEXT]);
+    /* hosted: the headers are part of the first segment (like GNU ld).
+     * bare (A61): the code starts exactly at the base address, where the
+     * machine starts executing, and the headers stay outside the image. */
+    ld->seg_off = ld->base == LD_BASE_BARE ? LD_PAGE : 0;
+    ld->out_addr[OUT_TEXT] = ld->seg_off ? ld->base
+                                         : align_up(ld->base + hdr, ld->out_align[OUT_TEXT]);
     ld->out_addr[OUT_RODATA] = align_up(ld->out_addr[OUT_TEXT] + ld->out_size[OUT_TEXT],
                                         ld->out_align[OUT_RODATA]);
     end1 = ld->out_addr[OUT_RODATA] + ld->out_size[OUT_RODATA];
-    ld->out_fileoff[OUT_TEXT] = ld->out_addr[OUT_TEXT] - LD_BASE;
-    ld->out_fileoff[OUT_RODATA] = ld->out_addr[OUT_RODATA] - LD_BASE;
+    ld->out_fileoff[OUT_TEXT] = ld->out_addr[OUT_TEXT] - ld->base + ld->seg_off;
+    ld->out_fileoff[OUT_RODATA] = ld->out_addr[OUT_RODATA] - ld->base + ld->seg_off;
 
     /* data segment: next page, with the address congruent to the file offset */
-    fileoff = align_up(end1 - LD_BASE, ld->out_align[OUT_DATA] > ld->out_align[OUT_BSS]
+    fileoff = align_up(end1 - ld->base + ld->seg_off, ld->out_align[OUT_DATA] > ld->out_align[OUT_BSS]
                                            ? ld->out_align[OUT_DATA] : ld->out_align[OUT_BSS]);
     ld->out_fileoff[OUT_DATA] = fileoff;
     ld->out_addr[OUT_DATA] = align_up(end1, LD_PAGE) + (fileoff % LD_PAGE);
@@ -924,6 +930,10 @@ int ld_link(Linker *ld)
         int ok;
         ld->entry = sym_addr(ld, entry->obj, entry->sym, &ok);
     }
+    if (ld->base == LD_BASE_BARE && ld->entry != ld->base) {
+        diag_plain(D_LINK_BARE_ENTRY, NULL); /* the machine starts at the base address */
+        return -1;
+    }
     return rc;
 }
 
@@ -1050,9 +1060,9 @@ int ld_write(Linker *ld, const char *path)
         buf_u16(&out, 8);
         buf_u16(&out, 7);
     }
-    put_phdr(&out, 5 /* R+X */, 0, LD_BASE,
-             ld->out_fileoff[OUT_RODATA] + ld->out_size[OUT_RODATA],
-             ld->out_fileoff[OUT_RODATA] + ld->out_size[OUT_RODATA]);
+    put_phdr(&out, 5 /* R+X */, ld->seg_off, ld->base,
+             ld->out_fileoff[OUT_RODATA] + ld->out_size[OUT_RODATA] - ld->seg_off,
+             ld->out_fileoff[OUT_RODATA] + ld->out_size[OUT_RODATA] - ld->seg_off);
     if (ld->nphdr == 2) {
         put_phdr(&out, 6 /* R+W */, ld->out_fileoff[OUT_DATA], ld->out_addr[OUT_DATA],
                  ld->out_size[OUT_DATA],

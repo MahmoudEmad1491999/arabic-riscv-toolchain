@@ -1,8 +1,10 @@
 /* main.c - مترجم: the غرة compiler.
  * Usage:
- *   مترجم رئيسي.غرة [مسار_بحث | ملف.o | ملف.كائن | ملف.مكتبة ...]
+ *   مترجم رئيسي.غرة [--عاري] [مسار_بحث | ملف.o | ملف.كائن | ملف.مكتبة | ملف.تجميع ...]
  *     build: one .كائن per module in بناء/ (only what is out of date), then
- *     link بناء/رئيسي (decision 37).
+ *     link بناء/رئيسي (decision 37). --عاري: a bare-metal image at
+ *     0x80000000 with no hosted start file; the program brings its own
+ *     assembly (.تجميع files are assembled into بناء/ and linked).
  *   مترجم رئيسي.غرة خرج.تجميع [مسار_بحث ...]
  *     one Arabic assembly file for the whole program (assumption A37). */
 #include "cc.h"
@@ -336,7 +338,7 @@ static int up_to_date(const char *path, const Buf *region)
 
 static int build(Arena *a, Program *prog, const char *rootdir, const uint8_t *stem,
                  size_t stem_len, const char **dirs, size_t ndirs, const char **extras,
-                 size_t nextras)
+                 size_t nextras, const char **asms, size_t nasms, int bare)
 {
     const char *out_dir = rootdir[0] == '.' && rootdir[1] == 0 ? "بناء" : concat(a, rootdir, "/بناء");
     Buf inputs;
@@ -345,6 +347,31 @@ static int build(Arena *a, Program *prog, const char *rootdir, const uint8_t *st
     char *exe;
 
     buf_init(&inputs);
+    /* assembly files of the program (a kernel's start and trap code) come
+     * first: in a bare image the machine starts at the first instruction */
+    for (i = 0; i < nasms && rc == 0; i++) {
+        const char *base = strrchr(asms[i], '/');
+        char *obj, *name;
+        size_t n;
+        RtBuf src;
+        base = base ? base + 1 : asms[i];
+        n = strlen(base) - strlen(".تجميع");
+        name = arena_alloc(a, n + 2);
+        name[0] = '/';
+        memcpy(name + 1, base, n);
+        name[n + 1] = 0;
+        obj = concat(a, concat(a, out_dir, name), ".كائن");
+        if (rt_read_file(asms[i], &src) != 0) {
+            diag_plain(D_CANNOT_READ, asms[i]);
+            rc = 2;
+            break;
+        }
+        if (rt_make_dirs(out_dir) != 0 || tool_assemble(src.data, src.len, asms[i], obj, NULL, 0) != 0) {
+            rc = 1;
+        }
+        rt_free(src.data);
+        buf_bytes(&inputs, &obj, sizeof obj);
+    }
     for (i = 0; i < prog->nmodules && rc == 0; i++) {
         Module *m = prog->modules[i];
         Buf region, text;
@@ -374,7 +401,7 @@ static int build(Arena *a, Program *prog, const char *rootdir, const uint8_t *st
         buf_free(&region);
     }
     /* the start file: lib/runtime/تشغيل.تجميع from a search path */
-    for (i = 1; i < ndirs && rc == 0; i++) {
+    for (i = 1; i < ndirs && rc == 0 && !bare; i++) {
         char *rt_src = concat(a, dirs[i], "/runtime/تشغيل.تجميع");
         RtBuf src;
         if (rt_read_file(rt_src, &src) == 0) {
@@ -397,7 +424,7 @@ static int build(Arena *a, Program *prog, const char *rootdir, const uint8_t *st
         memcpy(name + 1, stem, stem_len);
         name[stem_len + 1] = 0;
         exe = concat(a, out_dir, name);
-        if (tool_link(exe, (const char *const *)inputs.data, inputs.len / sizeof(char *)) != 0) {
+        if (tool_link(exe, (const char *const *)inputs.data, inputs.len / sizeof(char *), bare) != 0) {
             rc = 1;
         }
     }
@@ -418,8 +445,9 @@ int main(int argc, char **argv)
     int rc = 0;
     int build_mode;
     int first_path;
-    const char **extras;
-    size_t nextras = 0;
+    const char **extras, **asms;
+    size_t nextras = 0, nasms = 0;
+    int bare = 0;
 
     if (argc < 2) {
         diag_plain(D_CC_USAGE, NULL);
@@ -449,10 +477,15 @@ int main(int argc, char **argv)
     l.lib_paths = arena_alloc(&arena, ((size_t)argc + 1) * sizeof *l.lib_paths);
     l.lib_files = arena_alloc(&arena, ((size_t)argc + 1) * sizeof *l.lib_files);
     extras = arena_alloc(&arena, ((size_t)argc + 1) * sizeof *extras);
+    asms = arena_alloc(&arena, ((size_t)argc + 1) * sizeof *asms);
     l.dirs[l.ndirs++] = rootdir;
     for (i = (size_t)first_path; i < (size_t)argc; i++) {
         const char *arg = argv[i];
-        if (ends_with(arg, ".مكتبة")) {
+        if (strcmp(arg, "--عاري") == 0) {
+            bare = 1;
+        } else if (build_mode && ends_with(arg, ".تجميع")) {
+            asms[nasms++] = arg;
+        } else if (ends_with(arg, ".مكتبة")) {
             RtBuf *f = &l.lib_files[l.nlibs];
             if (rt_read_file(arg, f) != 0) {
                 diag_plain(D_CANNOT_READ, arg);
@@ -502,7 +535,7 @@ int main(int argc, char **argv)
             rc = 1;
         } else if (build_mode) {
             rc = build(&arena, &prog, rootdir, stem, stem_len, l.dirs, l.ndirs,
-                       extras, nextras);
+                       extras, nextras, asms, nasms, bare);
         } else {
             buf_init(&out);
             gen_program(&prog, &out);

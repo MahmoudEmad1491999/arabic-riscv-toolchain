@@ -47,6 +47,7 @@ typedef struct Program {
 } Program;
 
 int check_program(Program *p);
+int expr_is_volatile(const Expr *e); /* a متطاير location (decision 41) */
 
 /* const helpers (check.c) */
 ConstVal cv_from_u64(uint64_t v);

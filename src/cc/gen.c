@@ -892,7 +892,9 @@ static void gen_decl_ref(Gen *g, Expr *e)
         emit(g, "    حمل_عنوان وسيط٠، ");
         emit_sym(g, e->decl);
         emit(g, "\n");
+        if (e->decl->is_volatile) emit(g, "    سياج\n");
         load_value(g, e->type);
+        if (e->decl->is_volatile) emit(g, "    سياج\n");
         return;
     case REF_FUNC:
         emit(g, "    حمل_عنوان وسيط٠، ");
@@ -942,7 +944,13 @@ static void gen_expr(Gen *g, Expr *e)
     case E_INDEX:
     case E_DEREF:
         gen_addr(g, e);
-        load_lvalue(g, e);
+        if (expr_is_volatile(e)) { /* decision 41: fences on both sides */
+            emit(g, "    سياج\n");
+            load_lvalue(g, e);
+            emit(g, "    سياج\n");
+        } else {
+            load_lvalue(g, e);
+        }
         return;
     case E_ADDR:
         gen_addr(g, e->a);
@@ -1108,8 +1116,10 @@ static void gen_stmt(Gen *g, Stmt *s)
         push(g, "وسيط٠");
         gen_expr(g, s->e2);
         pop(g, "مؤقت٢");
+        if (expr_is_volatile(s->e1)) emit(g, "    سياج\n");
         if (in_packed(s->e1)) store_value_unaligned(g, "مؤقت٢", s->e1->type);
         else store_value(g, "مؤقت٢", s->e1->type);
+        if (expr_is_volatile(s->e1)) emit(g, "    سياج\n");
         return;
     case S_EXPR:
         gen_expr(g, s->e1);

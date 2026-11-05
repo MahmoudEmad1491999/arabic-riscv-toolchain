@@ -180,8 +180,11 @@ int obj_parse(const uint8_t *d, size_t len, ObjView *v)
         if (v->align[k] != 0 && (v->align[k] > OBJ_MAX_ALIGN || (v->align[k] & (v->align[k] - 1)) != 0)) {
             return -1;
         }
-        if (v->size[k] > len) {
-            return -1; /* also guards the sums below */
+        if (k != OBJ_SEC_BSS && v->size[k] > len) {
+            return -1; /* contents are in the file; also guards the sums below */
+        }
+        if (k == OBJ_SEC_BSS && v->size[k] > ((uint64_t)1 << 40)) {
+            return -1; /* no bytes in the file, but keep layout sums far from overflow */
         }
     }
     v->nsyms = rd32(d + 64);

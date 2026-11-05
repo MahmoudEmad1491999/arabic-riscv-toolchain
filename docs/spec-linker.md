@@ -10,6 +10,8 @@
 
 The output comes first, then the objects in link order (A29). The entry point is the global symbol `_بداية` (A31). Exit codes: 0 ok, 1 link errors, 2 usage or I/O. Errors are in Arabic, like the assembler's.
 
+`رابط --عاري خرج دخل...` makes a bare-metal image for `qemu-system-riscv64 -machine virt -bios none` (A61): the code starts exactly at `0x80000000`, where the machine starts executing, so `_بداية` must be the first instruction of the first input; the ELF headers stay outside the loaded image.
+
 ## Layout (A30)
 
 | Segment | Address | Contents |

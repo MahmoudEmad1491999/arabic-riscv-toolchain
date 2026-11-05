@@ -17,7 +17,7 @@ typedef struct {
 static const Keyword keywords[] = {
     {"استورد", K_IMPORT}, {"باسم", K_AS}, {"عام", K_PUBLIC}, {"خارجي", K_EXTERN},
     {"دالة", K_FUNC}, {"متغير", K_VAR}, {"ثابت", K_CONST}, {"بنية", K_STRUCT},
-    {"مضغوطة", K_PACKED}, {"تعداد", K_ENUM}, {"إذا", K_IF}, {"وإلا", K_ELSE},
+    {"مضغوطة", K_PACKED}, {"متطاير", K_VOLATILE}, {"تعداد", K_ENUM}, {"إذا", K_IF}, {"وإلا", K_ELSE},
     {"وجد", K_FOUND}, {"طالما", K_WHILE}, {"كلما", K_DO}, {"لكل", K_FOR},
     {"من", K_FROM}, {"قبل", K_BEFORE}, {"في", K_IN}, {"حسب", K_SWITCH},
     {"حالة", K_CASE}, {"اقطع", K_BREAK}, {"تجاوز", K_CONTINUE}, {"ارجع", K_RETURN},

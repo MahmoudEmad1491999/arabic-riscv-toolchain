@@ -120,6 +120,27 @@ Booleans: `و`، `أو` (short-circuit), `ليس`; the operands must be booleans
 {
 ```
 
+### 3.5.1 `متطاير` (Decided 41)
+
+`متطاير` marks memory that something other than this code also reads or writes: a device register, or a variable shared with another hart or with an interrupt handler.
+
+```
+متغير متطاير جاهز: منطقي = خطأ؛
+متغير سجل: ^متطاير طبيعي٨ = اعتبر)^متطاير طبيعي٨، ٠س٥٠٠٠٠٠٠١(؛
+```
+
+- **Where:** on a global variable (`متغير متطاير`), and on what a pointer points to (`^متطاير T`, also `^ثابت متطاير T`). Local variables, constants, parameters and slices cannot be `متطاير` (a local's address can still be passed as a `^متطاير T`).
+- **What:** only scalars of 1, 2, 4 or 8 bytes: integers, `منطقي`, `حرف`, enumerations, pointers, optional pointers, functions. Not structures, arrays or slices.
+- **Every access to a `متطاير` location:**
+  1. happens exactly once, at exactly the type's width: never removed, repeated, merged or split;
+  2. is untorn: another hart sees the whole old or the whole new value (aligned accesses; a field of a `بنية مضغوطة` can never be `متطاير`);
+  3. takes part in one global order of all `متطاير` accesses of all harts, consistent with each hart's program order (sequential consistency);
+  4. orders ordinary memory around it: everything written before a `متطاير` write is visible to whoever reads that value; nothing after a `متطاير` read moves before it;
+  5. orders device memory (I/O) the same way, including memory a device reads by DMA.
+- **Not:** a read-modify-write is two accesses (`س = س + ١` can interleave with another hart). Atomic operations come with the A extension; `متطاير` is not a lock.
+- **Types:** `^T` converts implicitly to `^متطاير T`; the other direction needs `اعتبر`. `@` of a `متطاير` global gives a `^متطاير T`.
+- **Code:** every access is the load or store between two `سياج` (fence of all memory and I/O). Slower on purpose.
+
 ### 3.6 Function types (Decided 31)
 
 `دالة)نوع، نوع(: نوع` is the type of a function value, used for callback tables. It is never null; use `اختياري` for that.
