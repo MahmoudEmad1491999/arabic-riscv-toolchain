@@ -4,17 +4,23 @@ SANITIZE ?= -fsanitize=address,undefined
 BUILD   := build
 
 COMMON_SRC := src/common/rt.c src/common/utf8.c src/common/chars.c src/common/number.c \
-              src/common/buf.c src/common/diag.c
+              src/common/buf.c src/common/diag.c src/common/obj.c
 AS_SRC     := src/as/main.c src/as/lexer.c src/as/tables.c src/as/as.c
 AS_BIN     := $(BUILD)/مجمع
 LD_SRC     := src/ld/main.c src/ld/ld.c
 LD_BIN     := $(BUILD)/رابط
 CC_SRC     := src/cc/main.c src/cc/lex.c src/cc/types.c src/cc/parse.c src/cc/check.c src/cc/gen.c
 CC_BIN     := $(BUILD)/مترجم
+OBJ_SRC    := src/obj/main.c
+OBJ_BIN    := $(BUILD)/عارض
 
-.PHONY: all test unit oracle asm link cc fuzz spec spec-check clean
+.PHONY: all test unit oracle asm link cc objfmt fuzz spec spec-check clean
 
-all: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(BUILD)/test_common
+all: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(OBJ_BIN) $(BUILD)/test_common
+
+$(OBJ_BIN): $(OBJ_SRC) $(COMMON_SRC) src/common/*.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $(SANITIZE) -o $@ $(OBJ_SRC) $(COMMON_SRC)
 
 $(CC_BIN): $(CC_SRC) $(COMMON_SRC) src/cc/*.h src/common/*.h
 	@mkdir -p $(BUILD)
@@ -51,6 +57,11 @@ link: $(AS_BIN) $(LD_BIN)
 cc: $(AS_BIN) $(LD_BIN) $(CC_BIN)
 	./tools/run_cc_tests.sh
 
+# Our object format: the same programs linked from ELF and from .كائن objects
+# must give byte-identical executables.
+objfmt: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(OBJ_BIN)
+	./tools/run_obj_tests.sh
+
 # Random programs: ours vs GNU as and GNU ld (slow; not part of `make test`).
 fuzz: $(AS_BIN) $(LD_BIN)
 	./tools/diff_fuzz.py 500
@@ -64,7 +75,7 @@ spec-check:
 	python3 -I tools/gen_spec.py docs/spec-language.src.md $(BUILD)/spec-language.md
 	cmp -s $(BUILD)/spec-language.md docs/spec-language.md || { echo "docs/spec-language.md is stale: run make spec"; exit 1; }
 
-test: unit oracle asm link cc spec-check
+test: unit oracle asm link cc objfmt spec-check
 
 clean:
 	rm -rf $(BUILD)

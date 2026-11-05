@@ -1,5 +1,7 @@
 /* main.c - مجمع: the Arabic RISC-V assembler.
  * Usage: مجمع input.تجميع output.o */
+#include <string.h>
+
 #include "../common/diag.h"
 #include "../common/rt.h"
 #include "../common/utf8.h"
@@ -16,6 +18,14 @@ static uint32_t line_of_offset(const RtBuf *src, size_t offset)
         }
     }
     return line;
+}
+
+/* A name ending in .كائن selects our object format (A53). */
+static int wants_obj_format(const char *path)
+{
+    static const char ext[] = ".\xD9\x83\xD8\xA7\xD8\xA6\xD9\x86";
+    size_t n = strlen(path), e = sizeof ext - 1;
+    return n >= e && memcmp(path + n - e, ext, e) == 0;
 }
 
 static int finish(int code, RtBuf *src, Arena *arena, Assembler *as)
@@ -59,7 +69,8 @@ int main(int argc, char **argv)
     if (as_assemble(&as) != 0) {
         return finish(1, &src, &arena, &as);
     }
-    if (as_write_elf(&as, argv[2]) != 0) {
+    if ((wants_obj_format(argv[2]) ? as_write_obj(&as, argv[2])
+                                    : as_write_elf(&as, argv[2])) != 0) {
         diag_plain(D_CANNOT_WRITE, argv[2]);
         return finish(2, &src, &arena, &as);
     }

@@ -37,3 +37,6 @@ Decisions made by the project owner. Newest last.
 30. Approved from the draft spec: no hidden padding in structures (`بنية مضغوطة` for packed ones); enumerations with an explicit underlying type; pointer syntax (`^`, `@`, `اختياري`, `لاشيء`, `إذا وجد`); array/slice types; the conversions `حول`، `حول_بفحص`، `اقتطع`، `اعتبر`; the loop forms (`كلما … طالما` runs the body first); functions with the exact RISC-V LP64 ABI and `رئيسية` as the entry; modules with interfaces in objects, interface hashes, libraries, `خارجي`; no compound assignment.
 31. All remaining proposals of the language draft are accepted: shift operators `رفع_ب` / `خفض_ب`, checked and saturating arithmetic (`جمع_بفحص`، `جمع_مشبع` …), function types, `حسب` / `حالة`, the tools (`مترجم` …), `مكرر`, `غير_مهيأ`.
 32. The compiler's parser is hand-written recursive descent.
+33. Our object format: extension `.كائن`, viewer tool `عارض`, symbol kinds `خاص` / `مصدر` / `مستورد`, fixed sections `نص` / `بيانات` / `ثوابت` / `أصفار`. Spec in docs/spec-object.md.
+34. Private symbols are stored by name (helps debugging), not only by number.
+35. The module-interface hash is 64-bit FNV-1a.

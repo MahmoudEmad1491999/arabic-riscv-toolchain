@@ -77,4 +77,7 @@ void as_free(Assembler *as);
 /* Writes the ELF64 relocatable object. Returns 0 on success. */
 int as_write_elf(Assembler *as, const char *path);
 
+/* Writes our own object format (.كائن). Returns 0 on success. */
+int as_write_obj(Assembler *as, const char *path);
+
 #endif

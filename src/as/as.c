@@ -10,6 +10,7 @@
 
 #include "../common/diag.h"
 #include "../common/elf.h"
+#include "../common/obj.h"
 #include "tables.h"
 
 #include <string.h>
@@ -1560,5 +1561,114 @@ int as_write_elf(Assembler *as, const char *path)
     buf_free(&strtab);
     buf_free(&shstr);
     buf_free(&shdrs);
+    return rc;
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Our own object format (.كائن), docs/spec-object.md                   */
+
+static int is_fake_label(const Symbol *s)
+{
+    return s->len == 4 && memcmp(s->name, ".L0 ", 4) == 0;
+}
+
+static int obj_reloc_kind(uint32_t type)
+{
+    switch (type) {
+    case R_RISCV_32: return OBJ_REL_WORD;
+    case R_RISCV_64: return OBJ_REL_DWORD;
+    case R_RISCV_BRANCH: return OBJ_REL_BRANCH;
+    case R_RISCV_JAL: return OBJ_REL_JAL;
+    case R_RISCV_CALL_PLT: return OBJ_REL_CALL;
+    case R_RISCV_HI20: return OBJ_REL_HI;
+    case R_RISCV_LO12_I: return OBJ_REL_LO_I;
+    case R_RISCV_LO12_S: return OBJ_REL_LO_S;
+    case R_RISCV_PCREL_HI20: return OBJ_REL_PCREL_HI;
+    case R_RISCV_PCREL_LO12_I: return OBJ_REL_PCREL_LO_I;
+    case R_RISCV_PCREL_LO12_S: return OBJ_REL_PCREL_LO_S;
+    default: return 0;
+    }
+}
+
+int as_write_obj(Assembler *as, const char *path)
+{
+    Symbol **syms = (Symbol **)as->symbols.data;
+    size_t nsyms = as->symbols.len / sizeof *syms;
+    Buf osyms, orels, out;
+    ObjOut o;
+    uint32_t index = 0;
+    size_t i;
+    int k, pass, rc;
+
+    buf_init(&osyms);
+    buf_init(&orels);
+    buf_init(&out);
+    for (pass = 0; pass < 2; pass++) { /* private first, then exported/imported */
+        for (i = 0; i < nsyms; i++) {
+            Symbol *s = syms[i];
+            ObjSym y;
+            if (is_fake_label(s) || !emit_symbol(s) || is_global_entry(s) != pass) {
+                continue;
+            }
+            y.name = s->name;
+            y.len = (uint32_t)s->len;
+            y.shape = OBJ_SHAPE_UNKNOWN;
+            y.size = 0;
+            y.value = s->value;
+            if (!s->defined) {
+                y.kind = OBJ_IMPORTED;
+                y.section = OBJ_SEC_UNDEF;
+                y.value = 0;
+            } else {
+                y.kind = s->global ? OBJ_EXPORTED : OBJ_PRIVATE;
+                y.section = s->section == SEC_ABS ? OBJ_SEC_ABS : (uint8_t)s->section;
+            }
+            s->elf_index = index++;
+            buf_bytes(&osyms, &y, sizeof y);
+        }
+    }
+    rc = 0;
+    for (k = 0; k < SEC_COUNT && rc == 0; k++) {
+        Reloc *r = (Reloc *)as->sec[k].relocs.data;
+        size_t n = as->sec[k].relocs.len / sizeof *r;
+        for (i = 0; i < n; i++) {
+            ObjReloc x;
+            x.offset = r[i].offset;
+            x.section = (uint8_t)k;
+            x.kind = (uint8_t)obj_reloc_kind(r[i].type);
+            if (x.kind == OBJ_REL_PCREL_LO_I || x.kind == OBJ_REL_PCREL_LO_S) {
+                const Symbol *l = r[i].sym;
+                if (!l->defined || l->section != k || l->section == SEC_ABS) {
+                    diag_plain(D_OBJ_PCREL_LABEL, NULL);
+                    rc = -1;
+                    break;
+                }
+                x.sym = OBJ_NO_SYMBOL;
+                x.extra = (int64_t)l->value;
+            } else {
+                x.sym = r[i].sym->elf_index;
+                x.extra = r[i].addend;
+            }
+            buf_bytes(&orels, &x, sizeof x);
+        }
+    }
+    if (rc == 0) {
+        memset(&o, 0, sizeof o);
+        for (k = 0; k < SEC_COUNT; k++) {
+            o.content[k] = k == SEC_BSS ? NULL : as->sec[k].data.data;
+            o.size[k] = k == SEC_BSS ? as->sec[k].size : as->sec[k].data.len;
+            o.align[k] = (uint32_t)as->sec[k].align;
+        }
+        o.syms = (const ObjSym *)osyms.data;
+        o.nsyms = osyms.len / sizeof(ObjSym);
+        o.relocs = (const ObjReloc *)orels.data;
+        o.nrelocs = orels.len / sizeof(ObjReloc);
+        obj_serialize(&o, &out);
+        rc = rt_write_file(path, out.data, out.len);
+    }
+    buf_free(&osyms);
+    buf_free(&orels);
+    buf_free(&out);
     return rc;
 }

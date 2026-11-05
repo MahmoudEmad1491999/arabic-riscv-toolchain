@@ -3,6 +3,7 @@
 
 #include "../common/diag.h"
 #include "../common/elf.h"
+#include "../common/obj.h"
 
 #include <string.h>
 
@@ -107,6 +108,147 @@ void ld_free(Linker *ld)
     }
 }
 
+/* Our own format (.كائن) is turned into the same in-memory shape an ELF
+ * object has, so one relocation engine serves both (assumption A54):
+ * section indices 1..4 are text, data, rodata, bss; one RELA-like section
+ * per section with relocations; every PC-relative low relocation gets a
+ * hidden label at the offset of its high instruction. */
+static int read_native(Linker *ld, InObj *o)
+{
+    ObjView v;
+    static const char *const names[OBJ_NSEC] = {".text", ".data", ".rodata", ".bss"};
+    static const int outs[OBJ_NSEC] = {OUT_TEXT, OUT_DATA, OUT_RODATA, OUT_BSS};
+    static const uint32_t rtypes[OBJ_REL_LAST + 1] = {
+        0, R_RISCV_BRANCH, R_RISCV_JAL, R_RISCV_CALL_PLT, R_RISCV_HI20, R_RISCV_LO12_I,
+        R_RISCV_LO12_S, R_RISCV_PCREL_HI20, R_RISCV_PCREL_LO12_I, R_RISCV_PCREL_LO12_S,
+        R_RISCV_32, R_RISCV_64};
+    size_t nlo = 0, hidden, i;
+    uint32_t sec_relocs[OBJ_NSEC] = {0, 0, 0, 0};
+    uint32_t rela_first[OBJ_NSEC];
+    uint8_t *img;
+    size_t base, nrela_secs = 0;
+    int k;
+
+    if (obj_parse(o->file.data, o->file.len, &v) != 0) {
+        return bad_object(o->path);
+    }
+    for (i = 0; i < v.nrelocs; i++) {
+        ObjReloc r;
+        obj_reloc(&v, (uint32_t)i, &r);
+        sec_relocs[r.section]++;
+        if (r.kind == OBJ_REL_PCREL_LO_I || r.kind == OBJ_REL_PCREL_LO_S) {
+            if ((uint64_t)r.extra >= v.size[r.section]) {
+                return bad_object(o->path);
+            }
+            nlo++;
+        }
+    }
+    for (i = 0; i < v.nsyms; i++) {
+        ObjSym y;
+        obj_sym(&v, (uint32_t)i, &y);
+        if (memchr(y.name, 0, y.len) != NULL) {
+            return bad_object(o->path);
+        }
+    }
+    /* image = original file + RELA entries grouped by section */
+    base = (o->file.len + 7u) & ~(size_t)7u;
+    img = rt_alloc(base + (size_t)v.nrelocs * ELF_RELA_SIZE + 8);
+    memcpy(img, o->file.data, o->file.len);
+    memset(img + o->file.len, 0, base - o->file.len);
+    for (k = 0; k < OBJ_NSEC; k++) {
+        if (sec_relocs[k] != 0) {
+            nrela_secs++;
+        }
+    }
+    o->shnum = (uint16_t)(1 + OBJ_NSEC + nrela_secs);
+    o->secs = arena_alloc(ld->arena, o->shnum * sizeof *o->secs);
+    memset(o->secs, 0, o->shnum * sizeof *o->secs);
+    for (k = 0; k < OBJ_NSEC; k++) {
+        InSec *s = &o->secs[k + 1];
+        s->name = names[k];
+        s->type = k == OBJ_SEC_BSS ? SHT_NOBITS : SHT_PROGBITS;
+        s->flags = SHF_ALLOC;
+        s->offset = v.content_off[k];
+        s->size = v.size[k];
+        s->align = v.align[k];
+        s->out = outs[k];
+    }
+    {
+        uint32_t at = 0;
+        size_t sec_i = 1 + OBJ_NSEC;
+        for (k = 0; k < OBJ_NSEC; k++) {
+            rela_first[k] = at;
+            if (sec_relocs[k] != 0) {
+                InSec *rs = &o->secs[sec_i++];
+                rs->name = ".rela";
+                rs->type = SHT_RELA;
+                rs->out = OUT_NONE;
+                rs->info = (uint32_t)k + 1;
+                rs->offset = base + (uint64_t)at * ELF_RELA_SIZE;
+                rs->size = (uint64_t)sec_relocs[k] * ELF_RELA_SIZE;
+                at += sec_relocs[k];
+            }
+        }
+    }
+    /* symbols: 0 = null, then the file's symbols, then the hidden labels */
+    hidden = 1 + v.nsyms;
+    o->nsyms = hidden + nlo;
+    o->syms = arena_alloc(ld->arena, (o->nsyms + 1) * sizeof *o->syms);
+    memset(o->syms, 0, (o->nsyms + 1) * sizeof *o->syms);
+    o->syms[0].name = "";
+    for (i = 0; i < v.nsyms; i++) {
+        ObjSym y;
+        InSym *x = &o->syms[i + 1];
+        char *name;
+        obj_sym(&v, (uint32_t)i, &y);
+        name = arena_alloc(ld->arena, (size_t)y.len + 1);
+        memcpy(name, y.name, y.len);
+        name[y.len] = 0;
+        x->name = name;
+        x->bind = y.kind == OBJ_PRIVATE ? STB_LOCAL : STB_GLOBAL;
+        x->type = STT_NOTYPE;
+        x->value = y.value;
+        x->shndx = y.section == OBJ_SEC_UNDEF ? SHN_UNDEF
+                 : y.section == OBJ_SEC_ABS ? (uint16_t)SHN_ABS
+                 : (uint16_t)(y.section + 1);
+    }
+    {
+        uint32_t fill[OBJ_NSEC];
+        size_t next_hidden = hidden;
+        for (k = 0; k < OBJ_NSEC; k++) {
+            fill[k] = rela_first[k];
+        }
+        for (i = 0; i < v.nrelocs; i++) {
+            ObjReloc r;
+            uint8_t *e;
+            uint64_t info;
+            uint32_t symidx;
+            obj_reloc(&v, (uint32_t)i, &r);
+            if (r.kind == OBJ_REL_PCREL_LO_I || r.kind == OBJ_REL_PCREL_LO_S) {
+                InSym *h = &o->syms[next_hidden];
+                h->name = ".L0 ";
+                h->bind = STB_LOCAL;
+                h->type = STT_NOTYPE;
+                h->shndx = (uint16_t)(r.section + 1);
+                h->value = (uint64_t)r.extra;
+                symidx = (uint32_t)next_hidden++;
+                r.extra = 0;
+            } else {
+                symidx = r.sym + 1;
+            }
+            e = img + base + (size_t)fill[r.section]++ * ELF_RELA_SIZE;
+            info = ((uint64_t)symidx << 32) | rtypes[r.kind];
+            wr64(e, r.offset);
+            wr64(e + 8, info);
+            wr64(e + 16, (uint64_t)r.extra);
+        }
+    }
+    rt_free(o->file.data);
+    o->file.data = img;
+    o->file.len = base + (size_t)v.nrelocs * ELF_RELA_SIZE;
+    return 0;
+}
+
 int ld_read_object(Linker *ld, const char *path)
 {
     InObj o;
@@ -121,6 +263,15 @@ int ld_read_object(Linker *ld, const char *path)
     if (rt_read_file(path, &o.file) != 0) {
         diag_plain2(D_CANNOT_READ, path, NULL);
         return -1;
+    }
+    if (obj_is_object(o.file.data, o.file.len)) {
+        if (read_native(ld, &o) != 0) {
+            rt_free(o.file.data);
+            return -1;
+        }
+        ld->objs = rt_realloc(ld->objs, (ld->nobjs + 1) * sizeof *ld->objs);
+        ld->objs[ld->nobjs++] = o;
+        return 0;
     }
     d = o.file.data;
     if (o.file.len < ELF_EHDR_SIZE || memcmp(d, "\177ELF", 4) != 0 || d[4] != 2 ||
