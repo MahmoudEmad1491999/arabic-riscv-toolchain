@@ -9,10 +9,16 @@ AS_SRC     := src/as/main.c src/as/lexer.c src/as/tables.c src/as/as.c
 AS_BIN     := $(BUILD)/مجمع
 LD_SRC     := src/ld/main.c src/ld/ld.c
 LD_BIN     := $(BUILD)/رابط
+CC_SRC     := src/cc/main.c src/cc/lex.c src/cc/types.c src/cc/parse.c src/cc/check.c src/cc/gen.c
+CC_BIN     := $(BUILD)/مترجم
 
-.PHONY: all test unit oracle asm link fuzz spec spec-check clean
+.PHONY: all test unit oracle asm link cc fuzz spec spec-check clean
 
-all: $(AS_BIN) $(LD_BIN) $(BUILD)/test_common
+all: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(BUILD)/test_common
+
+$(CC_BIN): $(CC_SRC) $(COMMON_SRC) src/cc/*.h src/common/*.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $(SANITIZE) -o $@ $(CC_SRC) $(COMMON_SRC)
 
 $(LD_BIN): $(LD_SRC) $(COMMON_SRC) src/ld/*.h src/common/*.h
 	@mkdir -p $(BUILD)
@@ -41,6 +47,10 @@ asm: $(AS_BIN) $(LD_BIN)
 link: $(AS_BIN) $(LD_BIN)
 	./tools/run_link_tests.sh
 
+# The غرة compiler: programs run under qemu, compile-error tests.
+cc: $(AS_BIN) $(LD_BIN) $(CC_BIN)
+	./tools/run_cc_tests.sh
+
 # Random programs: ours vs GNU as and GNU ld (slow; not part of `make test`).
 fuzz: $(AS_BIN) $(LD_BIN)
 	./tools/diff_fuzz.py 500
@@ -54,7 +64,7 @@ spec-check:
 	python3 -I tools/gen_spec.py docs/spec-language.src.md $(BUILD)/spec-language.md
 	cmp -s $(BUILD)/spec-language.md docs/spec-language.md || { echo "docs/spec-language.md is stale: run make spec"; exit 1; }
 
-test: unit oracle asm link spec-check
+test: unit oracle asm link cc spec-check
 
 clean:
 	rm -rf $(BUILD)

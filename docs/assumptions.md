@@ -55,3 +55,22 @@ These are decisions taken to keep moving while they are unconfirmed. Each one is
 | A34 | Weak symbols (from GNU objects) work: strong beats weak, undefined weak = 0. | Cheap and standard. | — |
 | A35 | The output symbol table keeps named local and global symbols, not `.L` labels. | Useful in objdump/gdb. | — |
 | A36 | No archives, scripts, shared libraries, PIE or relaxation yet. | Not needed until the compiler and its runtime library exist. | Archives will be needed for the runtime library (Phase 4). |
+
+## Added in Phase 4 (compiler مترجم, first version)
+
+| # | Assumption | Why | How to confirm or change |
+|---|---|---|---|
+| A37 | Usage `مترجم رئيسي.غرة خرج.تجميع [مسار_بحث...]`. The compiler follows the imports and writes **one** assembly file for the whole program; you then run `مجمع` and `رابط` (with `lib/runtime/تشغيل.تجميع`). Building the executable in one command, and separate compilation with interfaces stored in objects, come with our object format. | Our own object format (decision 11) is where interfaces live; until then whole-program compilation is simplest and exact. | — |
+| A38 | `ليس` binds more loosely than comparisons: `ليس أ == ب` means `ليس )أ == ب(`. | Avoids C's `!a == b` trap. | — |
+| A39 | Mixing `و` and `أو` in one expression needs brackets, like mixing bitwise and arithmetic operators. | No hidden precedence between them. | — |
+| A40 | Unary minus only applies to signed integers; on an unsigned value it is a compile error (write `٠ - ق` to wrap on purpose). | Negating an unsigned value is almost always a bug. | — |
+| A41 | An expression statement must be a call. | `أ + ب؛` does nothing and is a mistake. | — |
+| A42 | A local may not reuse the name of a visible local, a declaration of its module or an import alias (no shadowing). | Every name has one meaning in a function. | — |
+| A43 | For `غير_مهيأ` variables, only assigning the whole variable counts. Writing a field or element, or taking `@`, needs the variable to be assigned first. | Keeps the definite-assignment rule simple and sound. | — |
+| A44 | Allowed implicit conversions: only the safe ones: `^T` → `^ثابت T`, `][T` → `][ثابت T`, `^T` → `اختياري ^T`, `لاشيء` → any optional pointer. Everything else is explicit. | Adding read-only or optional never loses information. | — |
+| A45 | `بنية مضغوطة` is accepted by the parser but not supported yet (compile error); calls needing more than the eight argument registers are not supported yet. | Implementation order. | Will be added when needed. |
+| A46 | Generated label names are `ت_<number>`, module-level names become `<module path with _>__<name>`; `خارجي`, `عام خارجي` and `رئيسية` keep their raw names. Source file names must be valid identifiers (they become module names). | Valid assembly symbols, no collisions. | — |
+| A47 | The standard library starts with `غرة.نصوص`: `اطبع`, `اطبع_سطرا`, `اطبع_عددا`, `اطبع_عددا_سطرا`. Numbers are printed with Arabic-Indic digits in normal text order (most significant first), as text output, not source. | Program output is text for any viewer. | Say if you want another order or Latin digits. |
+| A48 | Run-time stops (`عنصر_بفحص`, `شريحة_بفحص`, `حول_بفحص`, `…_بفحص` arithmetic) print an Arabic message on stderr (stored in display order, A18) and exit with code 101. | A fixed, recognisable code. | — |
+| A49 | Program entry: `عام دالة رئيسية)(: طبيعي٨` or with one parameter `وسائط: ][][ثابت طبيعي٨`; the runtime builds the argument slices. | Decided shape (decision 30), exact types fixed here. | — |
+| A50 | Declarations may also come in any order across modules; constants, enumerations and structures are resolved on demand with cycle detection. A struct that contains itself by value is an error. | Decision 30 says order does not matter. | — |

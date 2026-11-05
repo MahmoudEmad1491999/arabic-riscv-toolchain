@@ -46,4 +46,13 @@
 - [x] Tests: every runnable program is linked by `رابط` and by GNU ld at the same addresses, and the loaded images are compared; a three-file program; the encoding tests linked against a stub (all relocation types); link-error tests; corrupted-object fuzzing; differential fuzzing now links too
 - [ ] Static archives (`.a`): with the runtime library in Phase 4
 
-Next: Phase 4, the language and its compiler. This starts with design discussions, including the linkage model and our object format.
+
+## Phase 4 status
+
+- [x] Language designed and specified (docs/spec-language.md, decisions 15–32)
+- [x] `مترجم` first version, hand-written in C: lexer (shared character and number rules), recursive-descent parser, type checker with every compile-time rule (exact literal typing, no implicit conversions, no hidden padding, definite assignment, all-paths-return, exhaustive `حسب`, no shadowing), code generator to Arabic assembly following the RISC-V LP64 ABI (slices, structures by value, function values)
+- [x] Runtime in our assembly (`lib/runtime`) and the first standard-library module `غرة.نصوص`, written in غرة
+- [x] Tests: programs compiled → assembled → linked by our tools and run under qemu (arithmetic semantics, structures, enumerations, loops, pointers, optionals, modules, run-time stops), 37 compile-error tests, compiler fuzzing under sanitizers
+- [ ] Our own object format (binary + text) with module interfaces; separate compilation; `مترجم` building the executable in one command
+- [ ] `بنية مضغوطة`, calls with more than eight argument words
+- [ ] More of the standard library (files, memory, strings)
