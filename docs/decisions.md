@@ -16,3 +16,12 @@ Decisions made by the project owner. Newest last.
 12. Our format comes in two forms: binary (what the tools and the loader read) and text (for people to read; never executed).
 13. We will have our own executable format and our own loader (Phase 5).
 14. M extension names approved (ضرب، ضرب_عالي، ضرب_عالي_بإشارة_وبلا_إشارة، ضرب_عالي_بلا_إشارة، قسمة، قسمة_بلا_إشارة، باقي، باقي_بلا_إشارة and the _كلمة forms). Assumption A24 is now a decision.
+
+### Language (Phase 4)
+
+15. Integer arithmetic wraps (two's complement) for every type; checked and saturating operations are explicit. Shift amounts and division by zero are defined as RISC-V defines them. No warnings: compile errors only.
+16. Slice indexing is bounds-checked by default (the program stops on a violation); an explicitly named unchecked index exists for hot loops; checks on constant indexes into fixed arrays are removed at compile time.
+17. Memory is managed manually, like C. Use-after-free and dangling pointers are the documented undefined behaviour.
+18. Brackets are not "mirrored": each glyph simply has its own meaning. In file order `)` `}` `]` open and `(` `{` `[` close.
+19. Every statement ends with the Arabic semicolon `؛`.
+20. Type names: `صحيح` + width (signed), `طبيعي` + width (unsigned), `منطقي`, `حرف` (one Unicode code point). Whether `حجم` and `بايت` exist is still open.
