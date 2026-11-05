@@ -1,4 +1,6 @@
-# Language specification (draft)
+# غرة (Ghora): language specification (draft)
+
+The language is called **غرة** (Ghora); its standard library is also called `غرة` (decision 29).
 
 Status: **draft for review.** Sections marked **Decided (n)** follow decision n in [decisions.md](decisions.md). Everything marked **Proposed** is my proposal and still needs the owner's approval.
 
@@ -14,15 +16,15 @@ Status: **draft for review.** Sections marked **Decided (n)** follow decision n 
 
 1. Every operation has one defined meaning. Where RISC-V defines a result (overflow wraps, division by zero, shift amounts), the language uses it, at zero cost.
 2. Whatever can be checked at compile time is a **compile error**. There are no warnings.
-3. Safety that costs something at run time is explicit and small: slice bounds checks (with an explicit unchecked index) and checked conversions.
-4. Memory is managed manually. The only documented undefined behaviour: using memory after it is freed or after its owner's lifetime ended (dangling pointers), and the explicit escape hatch `اعتبر` (section 6).
+3. Safety that costs something at run time is never hidden: you ask for it by name (checked indexing `عنصر_بفحص`, checked conversions `حول_بفحص`, checked arithmetic `جمع_بفحص` …). Plain indexing is not checked at run time (decision 28).
+4. Memory is managed manually. The undefined behaviour that remains is listed completely in section 10.
 
 ## 2. Lexical rules
 
 - **Shared with the assembler:** UTF-8, the same digits and number rules, identifier characters, rejected characters, strings, escapes, `#` comments.
 - **Code-point escape (Decided 25):** `\}…{`, e.g. `'\}{{h:0x200C}}{'`.
 - Every statement ends with `؛` (Decided 19). Blocks are `} … {` and need no `؛` after them.
-- **Proposed:** source files use the extension `.مصدر` until the language has a name (see the questions at the end).
+- Source files use the extension `.غرة` (Decided 29).
 
 ## 3. Types
 
@@ -46,7 +48,7 @@ Arithmetic on integers:
 
 Booleans: `و`، `أو` (short-circuit), `ليس`; the operands must be booleans (Decided 23). Conditions must be booleans.
 
-### 3.2 Arrays and slices (Proposed)
+### 3.2 Arrays and slices (Decided 30; indexing Decided 28)
 
 | Type | Written | Meaning |
 |---|---|---|
@@ -55,15 +57,15 @@ Booleans: `و`، `أو` (short-circuit), `ليس`; the operands must be booleans
 | read-only slice | `][ثابت نوع` | the same, but elements cannot be written through it |
 
 - Strings are read-only slices of unsigned 8-bit: `][ثابت {{t:u8}}`. A string literal is valid UTF-8 and lives in read-only data.
-- Indexing: `ش]ف[`, where the index must be of type size.
-  - It is bounds-checked: out of range stops the program with an Arabic message (Decided 16).
-  - Constant indexes into arrays are checked at compile time.
-  - Unchecked access is written `بلا_فحص)ش، ف(`.
-- Slicing: `ش]أ : ب[` covers elements a ≤ i < b. The bounds are checked: a ≤ b ≤ `.طول`.
+- Indexing: `ش]ف[`, where the index must be of type size (Decided 28).
+  - **Not checked at run time.** An index ≥ `.طول` is undefined behaviour (section 10).
+  - A constant index into an array is checked at compile time, since that is free: out of range is a compile error.
+  - **Checked access** is asked for by name: `عنصر_بفحص)ش، ف(` reads or writes the element and stops the program with an Arabic message if the index is out of range.
+- Slicing: `ش]أ : ب[` covers elements a ≤ i < b. It is not checked at run time; a > b or b > `.طول` is undefined behaviour. The checked form is `شريحة_بفحص)ش، أ، ب(`.
 - An array converts to a slice only explicitly: `م]{{n:0}} : م.طول[`. Arrays never decay to pointers.
 - Array literal: `]{{n:1}}، {{n:2}}، {{n:3}}[`. The count must equal N exactly. To fill all elements with one value, write `]{{n:0}} مكرر[`.
 
-### 3.3 Structures (Proposed): no hidden padding
+### 3.3 Structures (Decided 30): no hidden padding
 
 ```
 بنية رأس_ملف }
@@ -80,7 +82,7 @@ Booleans: `و`، `أو` (short-circuit), `ليس`; the operands must be booleans
 - A struct value is created with every field named, in any order, and none may be missing: `رأس_ملف} سحر = …، إصدار = {{n:1}}، حشو = ]{{n:0}} مكرر[، حجم_البيانات = {{n:0}} {`.
 - `==` on structures is a compile error. Compare the fields you mean, which avoids comparing padding bytes.
 
-### 3.4 Enumerations (Proposed)
+### 3.4 Enumerations (Decided 30)
 
 ```
 تعداد لون: {{t:u8}} }
@@ -93,7 +95,7 @@ Booleans: `و`، `أو` (short-circuit), `ليس`; the operands must be booleans
 - The underlying integer type is always written. Values start at 0 and count up unless given explicitly; duplicate values are a compile error.
 - Members are used qualified: `لون.أحمر`. An enumeration is not an integer; conversions are explicit (section 6).
 
-### 3.5 Pointers and optional pointers (Decided in principle; syntax proposed)
+### 3.5 Pointers and optional pointers (Decided 30)
 
 | Written | Meaning |
 |---|---|
@@ -141,7 +143,7 @@ Every declaration states its type, with no exceptions:
 
 `س = تعبير؛`. Assignment is a statement, never an expression. There is no `++` / `--` and no `+=`.
 
-**Proposed:** keep it that way: `س = س + {{n:1}}؛` is explicit.
+Decided 30: `س = س + {{n:1}}؛` is the only form.
 
 ### 5.2 Conditionals (Decided 22)
 
@@ -167,7 +169,7 @@ Every declaration states its type, with no exceptions:
 - There is no fallthrough: each `حالة` has its own block.
 - For an enumeration, every member must appear or there must be a final `وإلا: } … {`. For integers, `وإلا:` is required.
 
-### 5.4 Loops (Decided names; forms proposed)
+### 5.4 Loops (Decided 30)
 
 | Form | Meaning |
 |---|---|
@@ -185,7 +187,7 @@ Every declaration states its type, with no exceptions:
 
 `ارجع تعبير؛`, or `ارجع؛` in a function without a value. A function with a result type must return on every path; the compiler checks this.
 
-## 6. Conversions (Proposed)
+## 6. Conversions (Decided 30)
 
 Every conversion is explicit. Its name says what happens to a value that does not fit:
 
@@ -199,7 +201,7 @@ Every conversion is explicit. Its name says what happens to a value that does no
 - Integer → boolean has no conversion: write `ق != {{n:0}}`.
 - Converting to a character can only be done with `حول_بفحص`, so an invalid character can never exist.
 
-## 7. Functions and the ABI (Decided: RISC-V standard ABI)
+## 7. Functions and the ABI (Decided 30: RISC-V standard ABI)
 
 ```
 عام دالة الأكبر)أ: {{t:s64}}، ب: {{t:s64}}(: {{t:s64}} }
@@ -227,11 +229,11 @@ Every conversion is explicit. Its name says what happens to a value that does no
 
 The result type is unsigned 8-bit because that is exactly what a Linux exit code can hold.
 
-## 8. Modules (Proposed)
+## 8. Modules (Decided 30)
 
 ### 8.1 Within a project
 
-- **One file is one module.** The directory tree is the namespace: `رياضيات/مصفوفات.مصدر` is the module `رياضيات.مصفوفات`.
+- **One file is one module.** The directory tree is the namespace: `رياضيات/مصفوفات.غرة` is the module `رياضيات.مصفوفات`.
 - `استورد رياضيات.مصفوفات؛` makes the module available. Its members are used qualified by the last part of the name, `مصفوفات.ضرب)…(`. With a local name: `استورد نصوص باسم ن؛`, then `ن.اطبع)…(`. Unqualified imports do not exist, so a name can never silently come from two places.
 - Everything is private by default; `عام` exports it.
 - Imports must not form a cycle (compile error naming the cycle). The build order is therefore always defined.
@@ -242,7 +244,7 @@ The result type is unsigned 8-bit because that is exactly what a Linux exit code
 - A module can be imported from its **source** or from its **compiled object**. The compiler searches:
   1. the project root;
   2. the directories given with an option, conventionally `مكتبات/<اسم>/`;
-  3. the standard library.
+  3. the standard library `غرة` (its modules are imported as `غرة.…`, e.g. `استورد غرة.نصوص؛`).
 - **Every object file of ours carries the module's interface:** exported names, their full types, structure layouts, enumeration members and constant values. Importing a compiled module therefore needs only its object. There are no header files that can drift out of sync, and the interface can be read with the text form of the object format (decision 12).
 - **Consistency check.**
   - Each object stores a hash of its own interface and the hashes of the interfaces it was compiled against.
@@ -267,7 +269,7 @@ The result type is unsigned 8-bit because that is exactly what a Linux exit code
 
 | Tool | Role |
 |---|---|
-| `مترجم` | compiler: `مترجم رئيسي.مصدر` follows the imports, compiles what is out of date (source changed, or an imported interface hash changed) and links. One command, no Makefile needed. |
+| `مترجم` | compiler: `مترجم رئيسي.غرة` follows the imports, compiles what is out of date (source changed, or an imported interface hash changed) and links. One command, no Makefile needed. |
 | `مجمع` | assembler (exists) |
 | `رابط` | linker (exists; learns our object and archive formats) |
 | `محمل` | loader (Phase 5) |
@@ -275,7 +277,8 @@ The result type is unsigned 8-bit because that is exactly what a Linux exit code
 ## 10. Undefined behaviour: the complete list
 
 1. Use of memory after it has been freed, or of a pointer to a local variable after its function has returned.
-2. Anything done through `اعتبر` that produces a pointer to memory that is not a valid object of that type.
-3. Hand-written assembly or foreign code that breaks the ABI.
+2. Plain indexing or slicing out of range (`ش]ف[`, `ش]أ : ب[`) at run time. Use `عنصر_بفحص` / `شريحة_بفحص` where you want the check (decision 28).
+3. Anything done through `اعتبر` that produces a pointer to memory that is not a valid object of that type.
+4. Hand-written assembly or foreign code that breaks the ABI.
 
 Nothing else is undefined.

@@ -20,7 +20,7 @@ Decisions made by the project owner. Newest last.
 ### Language (Phase 4)
 
 15. Integer arithmetic wraps (two's complement) for every type; checked and saturating operations are explicit. Shift amounts and division by zero are defined as RISC-V defines them. No warnings: compile errors only.
-16. Slice indexing is bounds-checked by default (the program stops on a violation); an explicitly named unchecked index exists for hot loops; checks on constant indexes into fixed arrays are removed at compile time.
+16. *(Superseded by 28.)* Slice indexing is bounds-checked by default (the program stops on a violation); an explicitly named unchecked index exists for hot loops; checks on constant indexes into fixed arrays are removed at compile time.
 17. Memory is managed manually, like C. Use-after-free and dangling pointers are the documented undefined behaviour.
 18. Brackets are not "mirrored": each glyph simply has its own meaning. In file order `)` `}` `]` open and `(` `{` `[` close.
 19. Every statement ends with the Arabic semicolon `؛`.
@@ -32,3 +32,6 @@ Decisions made by the project owner. Newest last.
 25. Code-point escape in character and string literals: `\}…{` (braces in file order, the number follows the number rules), e.g. `'\}٠سج٠٠٢{'` is U+200C.
 26. Every declaration states its type, with no exception: variables, constants (`ثابت`) and parameters, even when the initial value is a literal or already typed. There is no type inference and there are no typeless named constants.
 27. Bitwise operators are words with the approved short suffix `_ب`: `و_ب`، `أو_ب`، `أو_حصري_ب`، `نفي_ب` (an approved exception to the full-word rule). `^` stays free for pointer dereference.
+28. Plain indexing `ش]ف[` and slicing are **not** checked at run time; out of range is undefined behaviour. Checked access is explicit: `عنصر_بفحص)ش، ف(` and `شريحة_بفحص)ش، أ، ب(`. Constant indexes into arrays are still checked at compile time. Supersedes 16.
+29. The language is called **غرة** (Ghora). Source files use `.غرة`. The standard library is also called `غرة` (`استورد غرة.نصوص؛`).
+30. Approved from the draft spec: no hidden padding in structures (`بنية مضغوطة` for packed ones); enumerations with an explicit underlying type; pointer syntax (`^`, `@`, `اختياري`, `لاشيء`, `إذا وجد`); array/slice types; the conversions `حول`، `حول_بفحص`، `اقتطع`، `اعتبر`; the loop forms (`كلما … طالما` runs the body first); functions with the exact RISC-V LP64 ABI and `رئيسية` as the entry; modules with interfaces in objects, interface hashes, libraries, `خارجي`; no compound assignment.

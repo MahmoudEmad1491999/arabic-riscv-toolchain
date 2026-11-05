@@ -6,13 +6,13 @@ Sources are written in Vim Arabic mode on a terminal with no BiDi, so files are 
 
 ## Status
 
-Phases 1–3 are done. `مجمع` assembles RV64IM plus the pseudo-instructions (`حمل_قيمة`, `حمل_عنوان`, `استدعاء`, `عودة`, ...) into ELF objects identical to GNU as (`-mno-relax`). `رابط` links them into static executables whose loaded image matches GNU ld at the same addresses. Next is Phase 4: the language, its compiler, and our own object format (binary + readable text) next to ELF. Phase 5 adds our own executable format and loader. See [docs/roadmap.md](docs/roadmap.md).
+Phases 1–3 are done. `مجمع` assembles RV64IM plus the pseudo-instructions (`حمل_قيمة`, `حمل_عنوان`, `استدعاء`, `عودة`, ...) into ELF objects identical to GNU as (`-mno-relax`). `رابط` links them into static executables whose loaded image matches GNU ld at the same addresses. Next is Phase 4: the language غرة (Ghora), its compiler, and our own object format (binary + readable text) next to ELF. Phase 5 adds our own executable format and loader. See [docs/roadmap.md](docs/roadmap.md).
 
 ## Documents
 
 - [docs/spec-assembler.md](docs/spec-assembler.md): the assembler language: numbers, brackets, identifiers, registers, mnemonics, directives
 - [docs/spec-linker.md](docs/spec-linker.md): the linker: usage, layout, symbols, relocations
-- [docs/spec-language.md](docs/spec-language.md): the language (draft under discussion); generated from `spec-language.src.md` by `make spec`
+- [docs/spec-language.md](docs/spec-language.md): the language, **غرة** (Ghora), draft under discussion; generated from `spec-language.src.md` by `make spec`
 - [docs/architecture.md](docs/architecture.md): how the assembler and linker are built: diagrams, data structures, algorithms
 - [docs/assumptions.md](docs/assumptions.md): working assumptions that are not yet confirmed
 - [docs/decisions.md](docs/decisions.md): decisions made by the owner
