@@ -5,24 +5,29 @@ digraph linker {
   node  [fontname="Helvetica", fontsize=10, shape=box, style="rounded,filled", fillcolor="#eef3fb", color="#4a6fa5"];
   edge  [fontname="Helvetica", fontsize=9, color="#4a6fa5"];
 
-  in    [label="object files (command-line order)", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
-  read  [label="ld_read_object\nvalidate ELF header, bounds-check every\nsection, string and symbol\n→ InObj { InSec[], InSym[] }"];
-  cls   [label="classify sections by name prefix\n.text* .rodata* .data* .bss* → 4 outputs\nnon-ALLOC dropped, others rejected"];
-  res   [label="resolve_symbols\n1) definitions: strong vs weak, duplicates\n2) every strong undefined must be defined"];
-  lay   [label="layout\ninput sections concatenated at their alignment\nsegment 1 @0x10000: headers .text .rodata\nsegment 2 next page, addr ≡ file offset (mod 4K)"];
-  rel   [label="apply_relocs\nS + A − P, field cleared and rewritten\nBRANCH JAL CALL HI20 LO12 PCREL 32 64\nPCREL_LO12 → find its PCREL_HI20 by label"];
-  ent   [label="entry = _بداية"];
-  wr    [label="ld_write\nELF header, 1–2 PT_LOAD, contents,\nsymtab, section headers, chmod +x"];
-  out   [label="executable", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
-
-  gsym  [label="GlobalSym hash table\nFNV-1a, 4096 buckets, chaining", shape=cylinder, fillcolor="#f0ecf8", color="#7a5aa6"];
-  obuf  [label="out_data[4] Buf\nout_addr / out_fileoff / out_align", shape=cylinder, fillcolor="#f0ecf8", color="#7a5aa6"];
+  in    [label="inputs (command-line order)\n.o  .كائن  .مكتبة", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  magic [label="first bytes?", shape=diamond, fillcolor="#ffffff"];
+  relf  [label="ELF reader\nvalidate header, bounds-check every\nsection, string and symbol"];
+  rnat  [label="read_native\n.كائن → the same InObj shape;\nhidden label per PC-relative low part"];
+  rlib  [label="library\nmembers kept aside"];
+  inobj [label="InObj { InSec[], InSym[], interface }", shape=cylinder, fillcolor="#f0ecf8", color="#7a5aa6"];
+  pull  [label="pull_members\nlink a member only if it exports\na name still needed (and _بداية)"];
+  iface [label="check_interfaces\neach import's recorded hash = the\ninterface hash of that module, else\n'stale object'; no module twice"];
+  res   [label="resolve_symbols\ndefinitions, duplicates, undefined;\nlinker defines _نهاية, _بداية_البيانات"];
+  lay   [label="layout\nhosted: @0x10000, headers in segment 1\n--عاري: code exactly @0x80000000,\nheaders outside; data on next page"];
+  rel   [label="apply_relocs\nS + A − P, fields rewritten\nBRANCH JAL CALL HI20 LO12 PCREL 32 64"];
+  ent   [label="entry = _بداية\n(bare: must be the first instruction)"];
+  wr    [label="ld_write\nELF header, PT_LOADs, symtab,\nsection headers, chmod +x"];
+  out   [label="executable / kernel image", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  gsym  [label="GlobalSym hash table\nFNV-1a, 4096 buckets", shape=cylinder, fillcolor="#f0ecf8", color="#7a5aa6"];
   diag  [label="diag.c\nArabic link errors", fillcolor="#fdecea", color="#b5524a"];
 
-  in -> read -> cls -> res -> lay -> rel -> ent -> wr -> out;
+  in -> magic;
+  magic -> relf [label="ELF"]; magic -> rnat [label="كائن"]; magic -> rlib [label="مكتبة"];
+  relf -> inobj; rnat -> inobj; rlib -> pull; inobj -> pull;
+  pull -> iface -> res -> lay -> rel -> ent -> wr -> out;
   res -> gsym [style=dotted]; rel -> gsym [style=dotted];
-  lay -> obuf [label="copy bytes"]; rel -> obuf [label="patch"]; wr -> obuf [style=dotted];
-  read -> diag [style=dashed, color="#b5524a"];
+  iface -> diag [style=dashed, color="#b5524a"];
   res -> diag [style=dashed, color="#b5524a"];
   rel -> diag [style=dashed, color="#b5524a"];
 }

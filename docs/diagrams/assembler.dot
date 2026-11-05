@@ -14,18 +14,23 @@ digraph assembler {
     stmt  [label="statement()\nlabels → directive | instruction | pseudo"];
     expr  [label="parse_operand / parse_expr\nrecursive descent, 2 precedence levels\nValue = constant + symbol + reloc op"];
     p1    [label="pass 1\ndefine labels, .ثابت constants\nemit placeholder bytes → final offsets"];
-    p2    [label="pass 2\nevaluate, range-check, encode\nR/I/S/B/U/J, record relocations"];
+    p2    [label="pass 2\nevaluate, range-check, encode\nR/I/S/B/U/J + CSR, record relocations"];
     pseudo[label="pseudo()\nGNU-identical expansions\nحمل_قيمة = load_const recursion"];
+    incb  [label=".تضمين\na file's bytes (GNU .incbin)"];
     stmt -> expr;
     stmt -> pseudo;
+    stmt -> incb;
     p1 -> p2 [label="if no errors"];
   }
 
-  tables [label="tables.c\nInsnDef[] mnemonics (RV64IM + pseudo)\nregisters, directives, reloc operators", shape=cylinder, fillcolor="#f0ecf8", color="#7a5aa6"];
+  tables [label="tables.c\nInsnDef[]: RV64IM, Zicsr, mret/sret/wfi/sfence.vma,\npseudo-instructions; registers;\nArabic CSR names; directives", shape=cylinder, fillcolor="#f0ecf8", color="#7a5aa6"];
   syms   [label="Symbol hash table\nFNV-1a, 4096 buckets, chaining\n+ creation-order array", shape=cylinder, fillcolor="#f0ecf8", color="#7a5aa6"];
   secs   [label="Section[4]\n.text .data .rodata .bss\nBuf data + Buf<Reloc> + align", shape=cylinder, fillcolor="#f0ecf8", color="#7a5aa6"];
+  pick   [label="output name ends in .كائن ?", shape=diamond, fillcolor="#ffffff"];
   elf    [label="as_write_elf\nsymtab (locals then globals), strtab,\nshstrtab, .rela.*, section headers"];
-  out    [label="object.o", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  ours   [label="as_write_obj (obj.c)\nprivate / exported / imported symbols,\n11 relocation kinds, PC-relative pair\nas one fact, optional module interface"];
+  out1   [label="object.o", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  out2   [label="object.كائن", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
   diag   [label="diag.c\nArabic message table, built in file order,\nreversed for an LTR terminal", fillcolor="#fdecea", color="#b5524a"];
 
   file -> utf8; utf8 -> lex;
@@ -34,7 +39,9 @@ digraph assembler {
   expr -> syms [style=dotted];
   p1 -> syms [label="define"];
   p2 -> secs [label="bytes + relocs"];
-  secs -> elf; syms -> elf; elf -> out;
+  secs -> pick; syms -> pick;
+  pick -> elf [label="no"]; pick -> ours [label="yes"];
+  elf -> out1; ours -> out2;
   lex -> diag [style=dashed, color="#b5524a"];
   p2 -> diag [style=dashed, color="#b5524a"];
 }

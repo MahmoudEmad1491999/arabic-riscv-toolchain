@@ -1,38 +1,45 @@
-// Overall pipeline and the test oracles around it.
+// The whole toolchain: tools (blue), files (yellow), runners (green), oracles (grey, dashed).
 digraph pipeline {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=11, nodesep=0.35, ranksep=0.45,
-         label="Arabic RISC-V toolchain: build pipeline (solid) and test oracles (dashed)", labelloc=t];
+  graph [rankdir=LR, fontname="Helvetica", fontsize=12, nodesep=0.3, ranksep=0.5,
+         label="Arabic RISC-V toolchain: from غرة source to a running program", labelloc=t];
   node  [fontname="Helvetica", fontsize=10, shape=box, style="rounded,filled", fillcolor="#eef3fb", color="#4a6fa5"];
   edge  [fontname="Helvetica", fontsize=9, color="#4a6fa5"];
 
-  src   [label="source.تجميع\n(UTF-8, file order:\nnumbers LSD-first)", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  subgraph cluster_files_in { label="sources (UTF-8, file order: numbers least significant digit first)"; fontname="Helvetica"; fontsize=10; style="rounded,dashed"; color="#b08a2e";
+    gsrc [label="program.غرة\nmodules, imports", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+    asrc [label="file.تجميع\nArabic assembly", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  }
+  cc    [label="مترجم\ncompiler (C11)\nchecks the whole program,\nbuilds what is out of date", fillcolor="#d7e6fb"];
   as    [label="مجمع\nassembler (C11)", fillcolor="#d7e6fb"];
-  obj   [label="object.o\nELF64 REL, EM_RISCV", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
   ld    [label="رابط\nlinker (C11)", fillcolor="#d7e6fb"];
-  exe   [label="executable\nELF64 EXEC, static", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
-  qemu  [label="qemu-riscv64\n(Linux user mode)", fillcolor="#e8f5e9", color="#4b8b4f"];
-  check [label="expected\nstdout + exit code", shape=note, fillcolor="#e8f5e9", color="#4b8b4f"];
+  lib   [label="محزم\nlibrary tool", fillcolor="#d7e6fb"];
+  view  [label="عارض\nobject viewer", fillcolor="#d7e6fb"];
 
-  src -> as -> obj -> ld -> exe -> qemu -> check;
-  obj2  [label="other .o files", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
-  obj2 -> ld;
+  obj   [label="X.كائن\nour object format\n+ module interface", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  elfo  [label="X.o\nELF64 relocatable\n(bridge to GNU / GCC)", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  mlib  [label="X.مكتبة\nlibrary of objects", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  exe   [label="executable\nELF64, static\n(hosted at 0x10000)", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  kern  [label="kernel image\n--عاري: bare metal\nat 0x80000000", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  text  [label="text form\n(read-only, for people)", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+
+  qemuu [label="qemu-riscv64\nLinux user mode", fillcolor="#e8f5e9", color="#4b8b4f"];
+  qemus [label="qemu-system-riscv64\nvirt, -bios none\nour OS", fillcolor="#e8f5e9", color="#4b8b4f"];
+
+  gsrc -> cc;
+  cc -> asrc [label="one-file mode\nخرج.تجميع"];
+  cc -> obj  [label="build mode\nبناء/ (assembler and\nlinker run inside)"];
+  asrc -> as;
+  as -> obj [label="out.كائن"];
+  as -> elfo [label="out.o"];
+  obj -> lib -> mlib;
+  obj -> view -> text;
+  obj -> ld; elfo -> ld; mlib -> ld [label="only needed\nmembers"];
+  ld -> exe -> qemuu;
+  ld -> kern -> qemus;
 
   node  [fillcolor="#f4f4f4", color="#888888"];
   edge  [style=dashed, color="#888888"];
-  translit [label="translit.py\nArabic → GNU syntax"];
-  gas      [label="GNU as\n-mno-relax"];
-  refobj   [label="reference .o", shape=note];
-  elfcmp   [label="elfcmp.py\nbytes, symbols,\nrelocations"];
-  script   [label="execcmp.py script\nGNU ld script at\nour addresses"];
-  gld      [label="GNU ld"];
-  refexe   [label="reference exe", shape=note];
-  execcmp  [label="execcmp.py compare\nloaded image, entry,\nsymbol values"];
-  fuzz     [label="diff_fuzz.py\nreshuffled programs", shape=component];
-
-  src -> translit -> gas -> refobj -> elfcmp;
-  obj -> elfcmp;
-  exe -> script -> gld;
-  obj -> gld -> refexe -> execcmp;
-  exe -> execcmp;
-  fuzz -> src [label="generates"];
+  gnu   [label="test oracles\ntranslit.py → GNU as / GNU ld,\nelfcmp.py, execcmp.py,\nGCC interop, fuzzers"];
+  as -> gnu [label="byte-identical"];
+  ld -> gnu [label="same image"];
 }

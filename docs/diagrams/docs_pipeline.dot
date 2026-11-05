@@ -1,0 +1,13 @@
+// make docs: Markdown to PDF with Arabic shown as in the editor (decision 48).
+digraph docs_pipeline {
+  graph [rankdir=LR, fontname="Helvetica", fontsize=11, nodesep=0.3, ranksep=0.45,
+         label="make docs — Arabic shown exactly as in the editor", labelloc=t];
+  node  [fontname="Helvetica", fontsize=10, shape=box, style="rounded,filled", fillcolor="#eef3fb", color="#4a6fa5"];
+  edge  [fontname="Helvetica", fontsize=9, color="#4a6fa5"];
+  md   [label="docs/*.md\nArabic in file order", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  pan  [label="pandoc\nMarkdown → HTML"];
+  tr   [label="docs_pdf.py\n1. shape letters in typing order\n2. reverse into visual order,\n   Latin runs kept whole\n3. one box per character\n(no renderer bidi, nothing mirrored)"];
+  wp   [label="WeasyPrint\nHTML → PDF"];
+  pdf  [label="build/docs/*.pdf", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  md -> pan -> tr -> wp -> pdf;
+}

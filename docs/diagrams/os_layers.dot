@@ -1,0 +1,44 @@
+// The operating system: privilege modes and modules (docs/spec-os.md).
+digraph os_layers {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=11, nodesep=0.3, ranksep=0.4, compound=true,
+         label="نظام غرة — the operating system on qemu virt (no firmware underneath)", labelloc=t];
+  node  [fontname="Helvetica", fontsize=10, shape=box, style="rounded,filled", fillcolor="#eef3fb", color="#4a6fa5"];
+  edge  [fontname="Helvetica", fontsize=9, color="#4a6fa5"];
+
+  subgraph cluster_u {
+    label="user mode — programs in غرة (os/برامج, os/مستخدم)"; fontname="Helvetica"; fontsize=10; style="rounded,filled"; fillcolor="#f3f9f3"; color="#4b8b4f";
+    progs [label="أول  عداد  دوار  خاطئ", fillcolor="#e8f5e9", color="#4b8b4f"];
+    nizam [label="نظام\nsystem services (imports, decision 43)\nطباعة: text and numbers", fillcolor="#e8f5e9", color="#4b8b4f"];
+    progs -> nizam;
+  }
+  subgraph cluster_s {
+    label="supervisor mode — the kernel in غرة (os/مشرف, os/ذاكرة, os/نواة.غرة)"; fontname="Helvetica"; fontsize=10; style="rounded,filled"; fillcolor="#f2f6fc"; color="#4a6fa5";
+    traps [label="فخاخ\ntimer ticks, system calls,\nexceptions (in Arabic)"];
+    procs [label="عمليات\n8 processes, شغل (spawn),\nround-robin scheduler, wait/exit"];
+    loader[label="محمل\nembedded programs (stage 6:\nour executable format, from disk)"];
+    files [label="ملفات\nflat directory, contiguous files"];
+    mem   [label="ترجمة + صفحات\nSv39 tables per process,\nfree list of 4 KiB pages"];
+    traps -> procs; procs -> loader; procs -> files; procs -> mem; loader -> mem;
+  }
+  subgraph cluster_m {
+    label="machine mode — our own layer in غرة (os/آلة.غرة)"; fontname="Helvetica"; fontsize=10; style="rounded,filled"; fillcolor="#fbf3ea"; color="#b07a2e";
+    mach  [label="آلة\nPMP, trap delegation, machine timer\n→ supervisor tick", fillcolor="#fdeedc", color="#b07a2e"];
+  }
+  subgraph cluster_asm {
+    label="the only assembly (os/بدء.تجميع, os/معالج.تجميع)"; fontname="Helvetica"; fontsize=10; style="rounded,dashed"; color="#888888";
+    asm   [label="reset entry, trap entry/exit (all registers),\ncontext switch, CSR accessors", fillcolor="#f4f4f4", color="#888888"];
+  }
+  subgraph cluster_hw {
+    label="qemu virt hardware"; fontname="Helvetica"; fontsize=10; style="rounded"; color="#555555";
+    uart  [label="UART 16550\n0x10000000", fillcolor="#ffffff", color="#555555"];
+    disk  [label="virtio disk\n0x10001000", fillcolor="#ffffff", color="#555555"];
+    clint [label="CLINT timer\n0x2000000", fillcolor="#ffffff", color="#555555"];
+    test  [label="test device (power off)\n0x100000", fillcolor="#ffffff", color="#555555"];
+    ram   [label="RAM 128 MiB\n0x80000000", fillcolor="#ffffff", color="#555555"];
+  }
+  nizam -> traps [label="ecall", lhead=cluster_s];
+  mach -> traps [label="tick (supervisor\nsoftware interrupt)"];
+  traps -> uart [label="متطاير"]; files -> disk [label="متطاير doorbell"];
+  mach -> clint; procs -> test [style=dashed];
+  asm -> mach [style=dotted]; asm -> traps [style=dotted];
+}

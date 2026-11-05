@@ -1,0 +1,32 @@
+// Boot sequence, a trap from user mode, and a context switch.
+digraph os_flow {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=11, nodesep=0.3, ranksep=0.3,
+         label="نظام غرة — boot, traps and scheduling", labelloc=t];
+  node  [fontname="Helvetica", fontsize=10, shape=box, style="rounded,filled", fillcolor="#eef3fb", color="#4a6fa5"];
+  edge  [fontname="Helvetica", fontsize=9, color="#4a6fa5"];
+
+  subgraph cluster_boot {
+    label="boot"; fontname="Helvetica"; fontsize=10; style="rounded"; color="#9bb3d6";
+    b1 [label="0x80000000: _بداية (machine mode)\nother harts sleep; machine stack;\nmtvec, mscratch"];
+    b2 [label="_آلة_ابدأ (غرة)\nPMP, delegation, timer, MPP = supervisor"];
+    b3 [label="mret → _مشرف_ابدأ\nstack, stvec, sscratch = 0"];
+    b4 [label="رئيسية (kernel)\npages, Sv39 on, disk, شغل أول"];
+    b5 [label="scheduler loop\nruns until no process is left,\nthen power off"];
+    b1 -> b2 -> b3 -> b4 -> b5;
+  }
+  subgraph cluster_trap {
+    label="a trap from user mode"; fontname="Helvetica"; fontsize=10; style="rounded"; color="#9bb3d6";
+    t1 [label="_فخ_المشرف: swap sp ↔ sscratch\n(kernel stack of the process)"];
+    t2 [label="save 31 registers + sepc + sstatus\n= 272-byte frame"];
+    t3 [label="_مشرف_فخ (غرة)", shape=diamond, fillcolor="#ffffff"];
+    t4 [label="tick → تخل:\nback to the scheduler"];
+    t5 [label="ecall → system call;\nresult in the frame's وسيط٠"];
+    t6 [label="exception → print cause,\nend only this process"];
+    t7 [label="_خروج_الفخ: restore the frame,\nsscratch = kernel stack top, sret"];
+    t1 -> t2 -> t3;
+    t3 -> t4 [label="tick"]; t3 -> t5 [label="ecall"]; t3 -> t6 [label="fault"];
+    t4 -> t7 [label="when scheduled\nagain"]; t5 -> t7;
+  }
+  sw [label="_بدل_السياق(old, new)\nsaves ra, sp, s0–s11; loads the other\n(scheduler ↔ process kernel stacks)", fillcolor="#f0ecf8", color="#7a5aa6"];
+  b5 -> sw [dir=both]; t4 -> sw [dir=both];
+}

@@ -1,24 +1,40 @@
-# Architecture: assembler (مجمع) and linker (رابط)
+# Architecture: the toolchain and the operating system
 
-This document describes how the two finished tools are built: the pipeline, the modules, the data structures and the algorithms. The diagrams are Graphviz sources in [diagrams/](diagrams/) (`.dot`), rendered to SVG next to them. To regenerate: `dot -Tsvg diagrams/X.dot -o diagrams/X.svg`.
+This document describes how everything is built: the tool pipeline, each tool's modules, the data structures and algorithms, our object formats, the compiler, and the operating system. The diagrams are Graphviz sources in [diagrams/](diagrams/) (`.dot`), rendered to SVG (for these pages) and PNG (for slides and video) next to them. To regenerate all of them: `make diagrams` (`tools/render_diagrams.py`, which also keeps mixed Arabic/English labels reading left to right).
+
+| Diagram | Shows |
+|---|---|
+| [pipeline](diagrams/pipeline.svg) | the whole toolchain, from غرة source to a running program |
+| [assembler](diagrams/assembler.svg) | inside `مجمع` |
+| [linker](diagrams/linker.svg) | inside `رابط` |
+| [compiler](diagrams/compiler.svg) | inside `مترجم`, with build mode |
+| [objformat](diagrams/objformat.svg) | our object (`.كائن`) and library (`.مكتبة`) formats |
+| [os_layers](diagrams/os_layers.svg) | the operating system: privilege modes, modules, hardware |
+| [os_flow](diagrams/os_flow.svg) | boot, a trap from user mode, the context switch |
+| [os_memory](diagrams/os_memory.svg) | physical memory and a process's address space |
+| [docs_pipeline](diagrams/docs_pipeline.svg) | `make docs`: Markdown to PDF with Arabic as in the editor |
 
 ## 1. Pipeline
 
 ![pipeline](diagrams/pipeline.svg)
 
-- Source files (`.تجميع`) are UTF-8 in **file order**, the order the programmer types in Vim Arabic mode. Number runs are stored least significant digit first.
-- `مجمع` turns one source file into an ELF64 relocatable object (`ET_REL`, `EM_RISCV`), byte-identical to GNU `as -mno-relax` on the transliterated source.
-- `رابط` links objects into a static ELF64 executable. Its loaded image is identical to GNU ld placing the same objects at the same addresses.
-- Dashed path: the test oracles. `translit.py` converts Arabic assembly to GNU syntax. `elfcmp.py` compares objects, `execcmp.py` compares executables, and `diff_fuzz.py` generates random variants of the test programs and checks both tools against GNU.
+- Source files (`.غرة`, `.تجميع`) are UTF-8 in **file order**, the order the programmer types in Vim Arabic mode. Number runs are stored least significant digit first.
+- `مترجم` checks the whole program. In one-file mode it writes one Arabic assembly file; in build mode it compiles each module that is out of date into `بناء/` (the assembler and linker run inside it) and links the program, or a bare-metal kernel image with `--عاري`.
+- `مجمع` turns an assembly file into an ELF64 relocatable object, byte-identical to GNU `as -mno-relax`, or into our own object format (`.كائن`) when the output name says so.
+- `رابط` links ELF objects, our objects and our libraries (`.مكتبة`, made by `محزم`) into a static executable; `عارض` prints our objects as text.
+- Dashed path: the test oracles (GNU as/ld through `translit.py`, `elfcmp.py`, `execcmp.py`, GCC interoperability, fuzzers).
 
 Source layout:
 
 | Directory | Contents | Lines (approx.) |
 |---|---|---|
-| `src/common/` | rt (OS layer), utf8, chars, number, buf, elf.h, diag | 1,100 |
-| `src/as/` | lexer, tables, as.c (two passes + ELF writer), main | 2,500 |
-| `src/ld/` | ld.c (reader, resolver, layout, relocations, writer), main | 900 |
-| `tools/`, `tests/gen/` | Python oracles, runners, fuzzers, test generators | 1,100 |
+| `src/common/` | rt (the only OS layer), utf8, chars, number, buf, elf.h, obj (our formats), diag | 1,900 |
+| `src/as/` | lexer, tables, as.c (two passes, ELF and `.كائن` writers), main | 2,800 |
+| `src/ld/` | ld.c (readers, libraries, interface check, resolver, layout, relocations, writer), main | 1,300 |
+| `src/cc/` | the compiler: lexer, parser, checker, generator, interfaces, build mode | 6,000 |
+| `src/obj/`, `src/lib/`, `src/fs/` | `عارض`, `محزم`, `مهيئ` | 200 |
+| `os/` | the operating system, in غرة and our assembly | 2,000 |
+| `tools/`, `tests/gen/` | oracles, test runners, fuzzers, generators, docs and diagram renderers | 2,700 |
 
 ## 2. Assembler (مجمع)
 
@@ -38,14 +54,14 @@ Source layout:
 4. **Pass 2.** The same parser runs again over the same tokens.
    - Operands are evaluated and range-checked, and instructions are encoded.
    - Relocations are recorded, with the field contents GNU writes.
-5. **Write the object.** `as_write_elf` builds the symbol table (null, section symbols, locals, then globals, with `sh_info` = first global). It also builds the string tables, one `.rela.*` per section with relocations, and the section headers.
+5. **Write the object.** When the output name ends in `.كائن`, `as_write_obj` writes our format (`src/common/obj.c`): private symbols first, then exported and imported ones; the PC-relative low relocations store the offset of their high instruction instead of pointing at a hidden label; the compiler can add a module interface. Otherwise `as_write_elf` builds the symbol table (null, section symbols, locals, then globals, with `sh_info` = first global). It also builds the string tables, one `.rela.*` per section with relocations, and the section headers.
 6. **Diagnostics.** `diag.c` builds every message in file order: path, line and column (in Arabic digits, least significant first), then the Arabic text. On output it reverses the whole line, then reverses Latin runs back. A plain left-to-right terminal then shows what Vim rightleft would show.
 
 ## 3. Linker (رابط)
 
 ![linker](diagrams/linker.svg)
 
-1. **Read objects.** `ld_read_object` validates the ELF header (64-bit, little-endian, `ET_REL`, `EM_RISCV`). It bounds-checks every section, string and symbol against the file size, so corrupted objects are rejected instead of crashing the linker.
+1. **Read inputs.** The first bytes decide the format. A `.كائن` is validated by `obj_parse` and turned into the same in-memory shape as an ELF object (one relocation engine for both; a hidden label is rebuilt for each PC-relative low part). A `.مكتبة` is kept aside; after the explicit objects, `pull_members` links a member only when it exports a name that is still needed. Then `check_interfaces` refuses an object compiled against an older interface of a module in the link. For ELF, `ld_read_object` validates the header (64-bit, little-endian, `ET_REL`, `EM_RISCV`). It bounds-checks every section, string and symbol against the file size, so corrupted objects are rejected instead of crashing the linker.
 2. **Classify sections.** Input sections go to one of four outputs by name prefix (`.text*`, `.rodata*` / `.srodata*`, `.data*` / `.sdata*`, `.bss*` / `.sbss*`). Non-ALLOC sections are dropped, and any other ALLOC section is an error.
 3. **Resolve symbols.**
    - First the definitions: a duplicate strong definition is an error, and a strong definition beats a weak one.
@@ -54,6 +70,7 @@ Source layout:
    - Input sections are concatenated in command-line order, each at its own alignment.
    - Segment 1 (R+X) is at 0x10000: ELF header, program headers, `.text`, `.rodata`.
    - Segment 2 (R+W) starts on the next page, with its address congruent to its file offset modulo 4 KiB: `.data`, then `.bss`.
+   - `--عاري` (bare metal): the code starts exactly at `0x80000000` and the headers stay outside the image; `_بداية` must be the first instruction. The linker defines `_نهاية` and `_بداية_البيانات` for the kernel.
 5. **Apply relocations.**
    - For each RELA entry: value = S + A (− P for pc-relative types). The value is range-checked, the instruction field is cleared and the new value written in.
    - `PCREL_LO12` relocations point at a label. The linker finds the `PCREL_HI20` relocation at that label's address and uses its value.
@@ -151,7 +168,9 @@ Source layout:
   - Line-level mutation (delete / duplicate / swap) of valid programs, for the differential checks.
   - Character-level mutation of sources and byte-level corruption of objects, run under AddressSanitizer and UndefinedBehaviorSanitizer to look for crashes.
 
-## 6. Compiler (مترجم), first version
+## 6. Compiler (مترجم)
+
+![compiler](diagrams/compiler.svg)
 
 | Stage | File | What it does |
 |---|---|---|
@@ -162,3 +181,33 @@ Source layout:
 | Code generation | `src/cc/gen.c` | Stack machine over the RISC-V LP64 ABI: values in `وسيط٠` (`وسيط١` for slices), aggregates by address, 16-byte pushes, frame pointer `محفوظ٠`; canonical sign/zero extension after every operation; structures ≤ 16 bytes in registers, larger by reference; far-safe branches. Emits Arabic assembly in file order through `number.c`. |
 | Runtime | `lib/runtime/تشغيل.تجميع` (generated by `tools/gen_runtime.py`) | `_بداية` builds the argument slices and calls `رئيسية`; memory copy; write/exit; run-time stops. |
 | Standard library | `lib/غرة/نصوص.غرة` | Printing text and numbers, written in غرة. |
+| Interfaces | `src/cc/iface.c` | A module's exported declarations as غرة text (constants evaluated), with an FNV-1a hash; stored in its `.كائن` and read back by the parser to import a compiled module. |
+| Build mode | `src/cc/main.c`, `src/cc/tools.c` | One object per module in `بناء/`, skipped when its interface region (source hash + imported interface hashes) is unchanged; the assembler and linker run in-process. |
+
+## 7. Our object and library formats
+
+![objformat](diagrams/objformat.svg)
+
+The full layout is in [spec-object.md](spec-object.md). Every relocation and symbol kind maps to one language concept: symbols are private, exported or imported; the PC-relative high/low pair is one relocation fact, so no hidden labels are needed. The interface region makes header files unnecessary and lets `رابط` refuse an object built against an old interface.
+
+## 8. The operating system
+
+![os_layers](diagrams/os_layers.svg)
+
+Written in غرة; the only assembly is the reset entry, the trap entry and exit, the context switch and the control-register accessors. There is no firmware: our own machine-mode layer sets up protection, delegation and the timer, then enters the kernel in supervisor mode. Device registers are accessed through `متطاير` pointers. Details: [spec-os.md](spec-os.md), [spec-fs.md](spec-fs.md).
+
+![os_flow](diagrams/os_flow.svg)
+
+- **Boot:** machine mode at `0x80000000` → `_آلة_ابدأ` → `mret` into the kernel → pages, Sv39, disk → the first program → the scheduler.
+- **Traps:** from user mode `sscratch` gives the process's kernel stack; a 272-byte frame holds the registers, `sepc` and `sstatus`; the handler in غرة decides between a tick (give up the processor), a system call, and an exception (end the process).
+- **Scheduling:** round-robin; `_بدل_السياق` switches between the scheduler's stack and each process's kernel stack.
+
+![os_memory](diagrams/os_memory.svg)
+
+Each process has its own Sv39 table: its program at `0x10000`, its stack below `0x40000000`, and the kernel mapped at its physical addresses without the user bit (the same in every table, so a trap needs no table switch).
+
+## 9. Documentation pipeline
+
+![docs_pipeline](diagrams/docs_pipeline.svg)
+
+`make docs` (decision 48) lays Arabic out itself instead of relying on the renderer's bidi: letters shaped in typing order, the line reversed into visual order with Latin runs whole, one box per character. `<samp>` marks text meant in storage order.

@@ -1,0 +1,35 @@
+// Internals of مترجم (src/cc), with build mode.
+digraph compiler {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=11, nodesep=0.3, ranksep=0.35,
+         label="مترجم — the غرة compiler", labelloc=t];
+  node  [fontname="Helvetica", fontsize=10, shape=box, style="rounded,filled", fillcolor="#eef3fb", color="#4a6fa5"];
+  edge  [fontname="Helvetica", fontsize=9, color="#4a6fa5"];
+
+  root  [label="رئيسي.غرة + search paths,\nlibraries (.مكتبة), extra objects", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  load  [label="loader (main.c)\nfollows استورد: X.غرة, else X.كائن\n(its interface text), else libraries;\nimport cycles rejected; dependencies first"];
+  lex   [label="lexer (lex.c)\nshared character and number rules;\nkeywords; brackets and comparisons\nby on-screen meaning"];
+  parse [label="parser (parse.c)\nhand-written recursive descent;\nstrict precedence (brackets required\nwhen mixing operator families)"];
+  check [label="checker (check.c)\nwhole program: names, types, layouts\n(no hidden padding), exact constants,\nsafe conversions only, definite assignment,\nall paths return, exhaustive حسب, متطاير"];
+  mode  [label="second argument\nends in .تجميع ?", shape=diamond, fillcolor="#ffffff"];
+  gen1  [label="gen.c: every module\n→ one Arabic assembly file"];
+  out1  [label="خرج.تجميع", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+
+  subgraph cluster_build {
+    label="build mode: for each module, dependencies first"; fontname="Helvetica"; fontsize=10; color="#9bb3d6"; style="rounded";
+    iface [label="iface.c\nexported declarations as غرة text,\nconstants evaluated; FNV-1a hash"];
+    fresh [label="object in بناء/ carries the same\ninterface region? (source hash +\nhashes of imported interfaces)", shape=diamond, fillcolor="#ffffff"];
+    gen2  [label="gen.c: this module only"];
+    asm   [label="assembler, in-process\n(tools.c → as.c)"];
+    obj   [label="بناء/a/b.كائن\ncode + interface", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+    iface -> fresh;
+    fresh -> gen2 [label="no"]; gen2 -> asm -> obj;
+    fresh -> obj [label="yes: reuse", style=dashed];
+  }
+  link  [label="linker, in-process (tools.c → ld.c)\n+ start file, .تجميع files, libraries;\n--عاري: bare-metal image"];
+  exe   [label="بناء/رئيسي", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+
+  root -> load -> lex -> parse -> check -> mode;
+  mode -> gen1 [label="yes"]; gen1 -> out1;
+  mode -> iface [label="no"];
+  obj -> link -> exe;
+}

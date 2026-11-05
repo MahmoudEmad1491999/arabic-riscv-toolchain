@@ -19,7 +19,7 @@ FS_BIN     := $(BUILD)/مهيئ
 LIB_BIN    := $(BUILD)/محزم
 OBJ_BIN    := $(BUILD)/عارض
 
-.PHONY: all docs test unit oracle asm link cc objfmt build-mode os fuzz spec spec-check clean
+.PHONY: all docs diagrams test unit oracle asm link cc objfmt build-mode os fuzz spec spec-check clean
 
 all: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(OBJ_BIN) $(LIB_BIN) $(FS_BIN) $(BUILD)/test_common
 
@@ -88,6 +88,10 @@ os: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(FS_BIN)
 docs:
 	python3 tools/docs_pdf.py --self-test
 	python3 tools/docs_pdf.py $(BUILD)/docs $(filter-out docs/spec-language.src.md,$(wildcard docs/*.md))
+
+# The architecture diagrams: docs/diagrams/*.dot -> .svg and .png.
+diagrams:
+	python3 tools/render_diagrams.py
 
 # Random programs: ours vs GNU as and GNU ld (slow; not part of `make test`).
 fuzz: $(AS_BIN) $(LD_BIN)

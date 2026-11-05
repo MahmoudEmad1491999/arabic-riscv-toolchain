@@ -1,0 +1,13 @@
+// Our object and library formats (docs/spec-object.md).
+digraph objformat {
+  graph [rankdir=LR, fontname="Helvetica", fontsize=11, nodesep=0.4, ranksep=0.8,
+         label="Our formats: object (.كائن) and library (.مكتبة)", labelloc=t];
+  node  [fontname="Helvetica", fontsize=10, shape=record, style="filled", fillcolor="#eef3fb", color="#4a6fa5"];
+  edge  [fontname="Helvetica", fontsize=9, color="#4a6fa5"];
+
+  obj [label="X.كائن|header (80 bytes): magic كائن, version,\nsize and alignment of the 4 sections,\nsymbol / relocation / name / interface sizes|نص (code)|بيانات (data)|ثوابت (read-only data)|أصفار (zeroed: size only)|<s> symbols × 24 bytes\nخاص  مصدر  مستورد|<r> relocations × 24 bytes\n11 kinds, PC-relative pair as one fact|names (UTF-8, no terminator)|<i> module interface"];
+  ifc [label="interface region|module name|interface hash (FNV-1a of the text)|source hash|imports: name + the hash compiled against|text: exported declarations as غرة source", fillcolor="#f0ecf8", color="#7a5aa6"];
+  lib [label="X.مكتبة|header: magic مكتبة, version, count|member table: offset, size, name|member names|<m> whole .كائن members", fillcolor="#fff7e0", color="#b08a2e"];
+  obj:i -> ifc [label="read by مترجم to import\na compiled module;\nchecked by رابط"];
+  lib:m -> obj [label="each member"];
+}
