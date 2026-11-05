@@ -1123,6 +1123,7 @@ static int check_expr(Ctx *c, Expr *e, Type *want)
         e->type = ty_string;
         if (e->string_id == 0) {
             buf_bytes(&c->prog->strings, &e, sizeof e);
+            e->str_module = c->mod;
             e->string_id = (int)(c->prog->strings.len / sizeof e);
         }
         return 0;
@@ -1476,7 +1477,7 @@ static int check_function(Ctx *c, Decl *d)
     size_t i;
     int term = 0, rc = 0;
     if (resolve_signature(c, d) != 0) return -1;
-    if (d->is_extern) return 0;
+    if (d->is_extern || d->body == NULL) return 0;
     memset(&da, 1, sizeof da);
     c->fn = d;
     c->da = &da;
@@ -1556,7 +1557,9 @@ int check_program(Program *p)
             case D_FUNC: if (resolve_signature(&c, d) != 0) rc = -1; break;
             case D_VAR:
                 d->type = resolve_type(&c, d->type, 1);
-                if (d->type == NULL ||
+                if (d->init == NULL) { /* interface: defined in the module's object */
+                    if (d->type == NULL) rc = -1;
+                } else if (d->type == NULL ||
                     check_expr(&c, d->init, d->type) != 0 || coerce(&c, d->init, d->type) != 0 ||
                     check_global_init(&c, d->init) != 0) rc = -1;
                 break;
@@ -1576,7 +1579,9 @@ int check_program(Program *p)
     }
 
     /* the entry point: عام دالة رئيسية)[وسائط: ][][ثابت طبيعي٨]( : طبيعي٨ */
-    {
+    if (p->no_main) {
+        p->main_func = NULL;
+    } else {
         Decl *mainf = module_decl(p->root, (const uint8_t *)"رئيسية", strlen("رئيسية"));
         int ok = mainf != NULL && mainf->kind == D_FUNC && mainf->is_public && !mainf->is_extern &&
                  mainf->ret != NULL && ty_equal(mainf->ret, u8) && mainf->nparams <= 1;

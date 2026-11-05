@@ -1363,7 +1363,7 @@ static void gen_function(Gen *g, Decl *d)
     {
         int64_t frame = ((int64_t)g->frame + 15) / 16 * 16;
         emit(g, "\n");
-        if (d->is_public && (d->raw_export || d == g->prog->main_func)) {
+        if (d->is_public) { /* exported: other objects may call it */
             emit(g, ".عام ");
             emit_sym(g, d);
             emit(g, "\n");
@@ -1456,6 +1456,27 @@ static void mangle(Gen *g, Decl *d)
     buf_free(&b);
 }
 
+/* Does this object hold the code and data of module m? */
+static int emits(const Program *p, const Module *m)
+{
+    return !m->interface_only && (p->only == NULL || p->only == m);
+}
+
+/* String literals this object needs: its own, and those of constants of
+ * any module (constants are used by value, so each user holds a copy). */
+static int needs_string(const Program *p, const Expr *s)
+{
+    size_t i, j;
+    if (p->only == NULL || s->str_module == p->only) return 1;
+    for (i = 0; i < p->nmodules; i++) {
+        const Module *m = p->modules[i];
+        for (j = 0; j < m->ndecls; j++) {
+            if (m->decls[j]->kind == D_CONST && m->decls[j]->init == s) return 1;
+        }
+    }
+    return 0;
+}
+
 int gen_program(Program *p, Buf *out)
 {
     Gen g;
@@ -1474,20 +1495,27 @@ int gen_program(Program *p, Buf *out)
     emit(&g, "# ولده مترجم غرة\n.شفرة\n");
     for (i = 0; i < p->nmodules; i++) {
         Module *m = p->modules[i];
+        if (!emits(p, m)) continue;
         for (j = 0; j < m->ndecls; j++) {
             Decl *d = m->decls[j];
-            if (d->kind == D_FUNC && !d->is_extern) gen_function(&g, d);
+            if (d->kind == D_FUNC && !d->is_extern && d->body != NULL) gen_function(&g, d);
         }
     }
 
     emit(&g, "\n.بيانات\n");
     for (i = 0; i < p->nmodules; i++) {
         Module *m = p->modules[i];
+        if (!emits(p, m)) continue;
         for (j = 0; j < m->ndecls; j++) {
             Decl *d = m->decls[j];
             uint64_t a;
             int n = 0;
             if (d->kind != D_VAR) continue;
+            if (d->is_public) {
+                emit(&g, ".عام ");
+                emit_sym(&g, d);
+                emit(&g, "\n");
+            }
             a = ty_align_of(d->type);
             while (((uint64_t)1 << n) < a) n++;
             emit(&g, ".محاذاة ");
@@ -1505,6 +1533,7 @@ int gen_program(Program *p, Buf *out)
         size_t n = p->strings.len / sizeof *strs;
         for (i = 0; i < n; i++) {
             size_t k;
+            if (!needs_string(p, strs[i])) continue;
             emit(&g, "ن_");
             emit_num(&g, strs[i]->string_id);
             emit(&g, ":\n");

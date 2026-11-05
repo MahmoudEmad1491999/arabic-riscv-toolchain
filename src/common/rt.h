@@ -27,6 +27,10 @@ int rt_write_file(const char *path, const uint8_t *data, size_t len);
 /* Marks a file as executable (rwxr-xr-x). Returns 0 on success. */
 int rt_make_executable(const char *path);
 
+/* Creates a directory and any missing parents (like mkdir -p).
+ * Returns 0 if it exists afterwards. */
+int rt_make_dirs(const char *path);
+
 /* Writes bytes to a file descriptor (RT_STDOUT / RT_STDERR). */
 void rt_write(int fd, const uint8_t *data, size_t len);
 

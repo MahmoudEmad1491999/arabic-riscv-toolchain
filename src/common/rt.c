@@ -52,6 +52,26 @@ int rt_write_file(const char *path, const uint8_t *data, size_t len)
     return 0;
 }
 
+int rt_make_dirs(const char *path)
+{
+    char buf[4096];
+    size_t n = strlen(path), i;
+    struct stat st;
+    if (n == 0 || n >= sizeof buf) return -1;
+    memcpy(buf, path, n + 1);
+    for (i = 1; i <= n; i++) {
+        if (buf[i] == '/' || buf[i] == 0) {
+            char saved = buf[i];
+            buf[i] = 0;
+            if (mkdir(buf, 0777) != 0 && (stat(buf, &st) != 0 || !S_ISDIR(st.st_mode))) {
+                return -1;
+            }
+            buf[i] = saved;
+        }
+    }
+    return 0;
+}
+
 int rt_make_executable(const char *path)
 {
     return chmod(path, 0755) == 0 ? 0 : -1;

@@ -833,6 +833,10 @@ static Decl *parse_func(Parser *p, int pub, int ext)
         return expect(p, K_SEMI) == 0 ? d : NULL;
     }
     d->raw_export = ext;
+    if (p->module->interface_only && is(p, K_SEMI)) {
+        next(p);
+        return d; /* interface: implemented in the module's object */
+    }
     d->body = parse_block(p);
     return d->body ? d : NULL;
 }
@@ -919,7 +923,7 @@ static Decl *parse_global(Parser *p, int pub, int is_const)
     d->is_public = pub;
     d->type = s->local->type;
     d->init = s->e1;
-    if (s->uninit) {
+    if (s->uninit && !p->module->interface_only) {
         fail(p, &s->tok, D_CC_UNINIT_GLOBAL, NULL);
         return NULL;
     }

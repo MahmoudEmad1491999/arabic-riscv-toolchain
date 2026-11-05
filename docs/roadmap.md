@@ -54,6 +54,6 @@
 - [x] Runtime in our assembly (`lib/runtime`) and the first standard-library module `غرة.نصوص`, written in غرة
 - [x] Tests: programs compiled → assembled → linked by our tools and run under qemu (arithmetic semantics, structures, enumerations, loops, pointers, optionals, modules, run-time stops), 37 compile-error tests, compiler fuzzing under sanitizers
 - [x] Our own object format, step A: binary `.كائن` + text viewer `عارض`, written by `مجمع`, read by `رابط`, identical executables (docs/spec-object.md)
-- [ ] Object format step B: module interfaces with FNV-1a hashes, archives; separate compilation; `مترجم` building the executable in one command
+- [x] Object format step B: module interfaces with FNV-1a hashes, libraries (`.مكتبة`, `محزم`); separate compilation; `مترجم` building the executable in one command
 - [x] `بنية مضغوطة`, calls with more than eight argument words
 - [ ] More of the standard library (files, memory, strings)

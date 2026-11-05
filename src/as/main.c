@@ -69,7 +69,7 @@ int main(int argc, char **argv)
     if (as_assemble(&as) != 0) {
         return finish(1, &src, &arena, &as);
     }
-    if ((wants_obj_format(argv[2]) ? as_write_obj(&as, argv[2])
+    if ((wants_obj_format(argv[2]) ? as_write_obj(&as, argv[2], NULL, 0)
                                     : as_write_elf(&as, argv[2])) != 0) {
         diag_plain(D_CANNOT_WRITE, argv[2]);
         return finish(2, &src, &arena, &as);

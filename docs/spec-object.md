@@ -19,7 +19,7 @@ Decided names (decision 33): extension `.كائن`; viewer tool `عارض`; symb
 | Symbols | 24 × nsyms | symbol entries |
 | Relocations | 24 × nrelocs | relocation entries |
 | Names | names_size | the UTF-8 names, back to back |
-| Interface | interface_size | module interface (step B; 0 until then) |
+| Interface | interface_size | module interface (see below; 0 for hand-written assembly) |
 
 Header:
 
@@ -85,7 +85,33 @@ Prints to standard output, one item per line, in file order, numbers LSD-first l
 إعادة_توطين <kind> قسم <name> موضع <n> رمز <name> إضافة <n>
 ```
 
-## Step B (specified, built after step A)
+## Module interface (the Interface region)
 
-- **Module interface:** the exported declarations of the module (types, function signatures, constants) in a compact binary form, plus its FNV-1a 64-bit hash (offset basis 14695981039346656037, prime 1099511628211, over the interface bytes). Each import records the module name and the hash it was compiled against. `رابط` rejects a mismatch with a message naming both modules.
-- **Archives:** one file holding several objects and an index from each exported name to the object defining it; `رابط` pulls only the objects that satisfy an undefined name.
+Written by `مترجم` for every module it compiles (decisions 35-36). Objects made by `مجمع` from hand-written assembly have none (`interface_size` 0).
+
+| Field | Size |
+|---|---|
+| module name length, then the dotted module name (`غرة.نصوص`) | 4 + n |
+| interface hash: FNV-1a 64 of the text below (offset basis 14695981039346656037, prime 1099511628211) | 8 |
+| source hash: FNV-1a 64 of the module's source file | 8 |
+| number of imports, then for each: name length, name, the interface hash it was compiled against | 4 + … |
+| text length, then the text | 4 + n |
+
+The text is غرة source, in file order like every source file: the module's `استورد … باسم …؛` lines, every structure and enumeration (private ones without `عام`: exported signatures may use them, importers cannot name them), and the exported constants (evaluated), variables (`= غير_مهيأ`) and functions (signature, `؛` instead of a body). The reader rejects a region whose hash does not match its text.
+
+- **Importing a compiled module:** when `a/b.غرة` is not found, the compiler looks for `a/b.كائن` in the same search paths, then in the libraries given on the command line, and parses the interface text.
+- **Stale objects:** `رابط` compares, for every object with an interface, the recorded hash of each import with the interface hash of the object that provides that module. A mismatch is an error naming the module and the stale object. The same module twice in one link is an error.
+
+## Libraries (`.مكتبة`, decision 38)
+
+Made by `محزم مكتبة.مكتبة أ.كائن ب.كائن…`.
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 10 | magic: the UTF-8 bytes of `مكتبة` |
+| 10 | 2 | version (1) |
+| 12 | 4 | number of members |
+| 16 | 24 × n | per member: offset u64, size u64, name offset u32, name length u32 |
+| … | | member names, then the members (each a whole `.كائن`, at 8-byte boundaries) |
+
+`رابط` links a member only when it exports a name that the program still needs (the entry `_بداية` counts as needed), repeating until nothing changes. Members carry their own symbol tables, so there is no separate index that could drift (A59).

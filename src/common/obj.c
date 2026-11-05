@@ -17,6 +17,84 @@ static uint64_t rd64(const uint8_t *p) { return (uint64_t)rd32(p) | ((uint64_t)r
 
 static uint64_t up8(uint64_t v) { return (v + 7u) & ~(uint64_t)7u; }
 
+uint64_t obj_fnv1a(const uint8_t *data, size_t len)
+{
+    uint64_t h = 14695981039346656037u;
+    size_t i;
+    for (i = 0; i < len; i++) {
+        h = (h ^ data[i]) * 1099511628211u;
+    }
+    return h;
+}
+
+void obj_iface_encode(const uint8_t *module, size_t module_len, uint64_t source_hash,
+                      size_t nimports, const uint8_t *const *names, const size_t *lens,
+                      const uint64_t *hashes, const uint8_t *text, size_t text_len, Buf *out)
+{
+    size_t i;
+    buf_u32(out, (uint32_t)module_len);
+    buf_bytes(out, module, module_len);
+    buf_u64(out, obj_fnv1a(text, text_len));
+    buf_u64(out, source_hash);
+    buf_u32(out, (uint32_t)nimports);
+    for (i = 0; i < nimports; i++) {
+        buf_u32(out, (uint32_t)lens[i]);
+        buf_bytes(out, names[i], lens[i]);
+        buf_u64(out, hashes[i]);
+    }
+    buf_u32(out, (uint32_t)text_len);
+    buf_bytes(out, text, text_len);
+}
+
+int obj_iface_decode(const uint8_t *d, size_t len, ObjIface *f)
+{
+    size_t pos = 0;
+    uint32_t i, n;
+    memset(f, 0, sizeof *f);
+    if (len < 4) return -1;
+    f->module_len = rd32(d);
+    pos = 4;
+    if (f->module_len == 0 || len - pos < (size_t)f->module_len + 20) return -1;
+    f->module = d + pos;
+    pos += f->module_len;
+    f->hash = rd64(d + pos);
+    f->source_hash = rd64(d + pos + 8);
+    f->nimports = rd32(d + pos + 16);
+    pos += 20;
+    f->imports = d + pos;
+    for (i = 0; i < f->nimports; i++) {
+        if (len - pos < 4) return -1;
+        n = rd32(d + pos);
+        if (n == 0 || len - pos - 4 < (size_t)n + 8) return -1;
+        pos += 4 + (size_t)n + 8;
+    }
+    if (len - pos < 4) return -1;
+    f->text_len = rd32(d + pos);
+    pos += 4;
+    if (len - pos != f->text_len) return -1;
+    f->text = d + pos;
+    return obj_fnv1a(f->text, f->text_len) == f->hash ? 0 : -1;
+}
+
+void obj_iface_import(const ObjIface *f, uint32_t i, const uint8_t **name, uint32_t *len,
+                      uint64_t *hash)
+{
+    const uint8_t *p = f->imports;
+    uint32_t k;
+    for (k = 0; k < i; k++) {
+        p += 4 + rd32(p) + 8;
+    }
+    *len = rd32(p);
+    *name = p + 4;
+    *hash = rd64(p + 4 + *len);
+}
+
+int obj_iface(const ObjView *v, ObjIface *out)
+{
+    if (v->iface_size == 0) return -1;
+    return obj_iface_decode(v->file + v->iface_off, (size_t)v->iface_size, out);
+}
+
 void obj_serialize(const ObjOut *o, Buf *out)
 {
     Buf names;
@@ -40,7 +118,7 @@ void obj_serialize(const ObjOut *o, Buf *out)
     buf_u32(out, (uint32_t)o->nsyms);
     buf_u32(out, (uint32_t)o->nrelocs);
     buf_u32(out, (uint32_t)names.len);
-    buf_u32(out, 0); /* interface_size */
+    buf_u32(out, (uint32_t)o->iface_len);
 
     for (k = 0; k < OBJ_SEC_BSS; k++) {
         buf_align(out, 8);
@@ -74,6 +152,9 @@ void obj_serialize(const ObjOut *o, Buf *out)
         buf_u64(out, (uint64_t)r->extra);
     }
     buf_bytes(out, names.data, names.len);
+    if (o->iface_len != 0) {
+        buf_bytes(out, o->iface, o->iface_len);
+    }
     buf_free(&names);
 }
 
@@ -127,6 +208,12 @@ int obj_parse(const uint8_t *d, size_t len, ObjView *v)
     pos += v->iface_size;
     if (pos != len) {
         return -1;
+    }
+    if (v->iface_size != 0) {
+        ObjIface f;
+        if (obj_iface_decode(d + v->iface_off, (size_t)v->iface_size, &f) != 0) {
+            return -1;
+        }
     }
     {
         uint32_t i;
@@ -188,6 +275,79 @@ void obj_reloc(const ObjView *v, uint32_t i, ObjReloc *out)
 }
 
 /* ------------------------------------------------------------------ */
+/* Libraries                                                           */
+
+static const uint8_t LIB_MAGIC[10] = {0xD9, 0x85, 0xD9, 0x83, 0xD8, 0xAA, 0xD8, 0xA8, 0xD8, 0xA9}; /* مكتبة */
+
+int obj_is_lib(const uint8_t *data, size_t len)
+{
+    return len >= 10 && memcmp(data, LIB_MAGIC, 10) == 0;
+}
+
+int obj_lib_parse(const uint8_t *d, size_t len, ObjLib *lib)
+{
+    uint32_t i;
+    uint64_t table;
+    memset(lib, 0, sizeof *lib);
+    if (len < OBJ_LIB_HEADER || !obj_is_lib(d, len) || (d[10] | (d[11] << 8)) != 1) {
+        return -1;
+    }
+    lib->n = rd32(d + 12);
+    table = OBJ_LIB_HEADER + (uint64_t)lib->n * OBJ_LIB_ENTRY;
+    if (table > len) return -1;
+    for (i = 0; i < lib->n; i++) {
+        const uint8_t *e = d + OBJ_LIB_HEADER + (uint64_t)i * OBJ_LIB_ENTRY;
+        uint64_t off = rd64(e), size = rd64(e + 8);
+        uint64_t noff = rd32(e + 16), nlen = rd32(e + 20);
+        if (off < table || off > len || size > len - off ||
+            noff < table || noff > len || nlen > len - noff) {
+            return -1;
+        }
+    }
+    lib->file = d;
+    lib->len = len;
+    return 0;
+}
+
+int obj_lib_member(const ObjLib *lib, uint32_t i, ObjLibMember *m)
+{
+    const uint8_t *e;
+    if (i >= lib->n) return -1;
+    e = lib->file + OBJ_LIB_HEADER + (uint64_t)i * OBJ_LIB_ENTRY;
+    m->data = lib->file + rd64(e);
+    m->len = (size_t)rd64(e + 8);
+    m->name = lib->file + rd32(e + 16);
+    m->name_len = rd32(e + 20);
+    return 0;
+}
+
+void obj_lib_serialize(size_t n, const uint8_t *const *names, const size_t *name_lens,
+                       const uint8_t *const *datas, const size_t *sizes, Buf *out)
+{
+    uint64_t pos = OBJ_LIB_HEADER + (uint64_t)n * OBJ_LIB_ENTRY;
+    uint64_t names_at = pos;
+    size_t i;
+    for (i = 0; i < n; i++) pos += name_lens[i];
+    buf_bytes(out, LIB_MAGIC, 10);
+    buf_u16(out, 1);
+    buf_u32(out, (uint32_t)n);
+    for (i = 0; i < n; i++) {
+        pos = up8(pos);
+        buf_u64(out, pos);
+        buf_u64(out, sizes[i]);
+        buf_u32(out, (uint32_t)names_at);
+        buf_u32(out, (uint32_t)name_lens[i]);
+        names_at += name_lens[i];
+        pos += sizes[i];
+    }
+    for (i = 0; i < n; i++) buf_bytes(out, names[i], name_lens[i]);
+    for (i = 0; i < n; i++) {
+        buf_align(out, 8);
+        buf_bytes(out, datas[i], sizes[i]);
+    }
+}
+
+/* ------------------------------------------------------------------ */
 /* Text form                                                           */
 
 static void put_text(Buf *b, const char *s)
@@ -209,6 +369,12 @@ static void put_num(Buf *b, uint64_t v)
 {
     uint32_t cps[24];
     put_cps(b, cps, num_format_dec(v, cps));
+}
+
+static void put_hex(Buf *b, uint64_t v)
+{
+    uint32_t cps[24];
+    put_cps(b, cps, num_format_hex(v, cps));
 }
 
 static void put_signed(Buf *b, int64_t v)
@@ -268,6 +434,33 @@ void obj_dump(const ObjView *v, Buf *out)
         put_text(out, " قيمة ");
         put_num(out, s.value);
         put_text(out, "\n");
+    }
+    {
+        ObjIface f;
+        if (obj_iface(v, &f) == 0) {
+            uint32_t k;
+            put_text(out, "وحدة ");
+            buf_bytes(out, f.module, f.module_len);
+            put_text(out, " بصمة_الواجهة ");
+            put_hex(out, f.hash);
+            put_text(out, " بصمة_المصدر ");
+            put_hex(out, f.source_hash);
+            put_text(out, "\n");
+            for (k = 0; k < f.nimports; k++) {
+                const uint8_t *name;
+                uint32_t n;
+                uint64_t h;
+                obj_iface_import(&f, k, &name, &n, &h);
+                put_text(out, "مبني_على ");
+                buf_bytes(out, name, n);
+                put_text(out, " بصمة ");
+                put_hex(out, h);
+                put_text(out, "\n");
+            }
+            put_text(out, "واجهة }\n");
+            buf_bytes(out, f.text, f.text_len);
+            put_text(out, "{\n");
+        }
     }
     for (i = 0; i < v->nrelocs; i++) {
         ObjReloc r;

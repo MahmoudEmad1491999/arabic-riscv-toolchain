@@ -9,20 +9,27 @@ AS_SRC     := src/as/main.c src/as/lexer.c src/as/tables.c src/as/as.c
 AS_BIN     := $(BUILD)/مجمع
 LD_SRC     := src/ld/main.c src/ld/ld.c
 LD_BIN     := $(BUILD)/رابط
-CC_SRC     := src/cc/main.c src/cc/lex.c src/cc/types.c src/cc/parse.c src/cc/check.c src/cc/gen.c
+CC_SRC     := src/cc/main.c src/cc/lex.c src/cc/types.c src/cc/parse.c src/cc/check.c src/cc/gen.c \
+              src/cc/iface.c src/cc/tools.c src/as/lexer.c src/as/tables.c src/as/as.c src/ld/ld.c
 CC_BIN     := $(BUILD)/مترجم
 OBJ_SRC    := src/obj/main.c
+LIB_SRC    := src/lib/main.c
+LIB_BIN    := $(BUILD)/محزم
 OBJ_BIN    := $(BUILD)/عارض
 
-.PHONY: all test unit oracle asm link cc objfmt fuzz spec spec-check clean
+.PHONY: all test unit oracle asm link cc objfmt build-mode fuzz spec spec-check clean
 
-all: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(OBJ_BIN) $(BUILD)/test_common
+all: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(OBJ_BIN) $(LIB_BIN) $(BUILD)/test_common
+
+$(LIB_BIN): $(LIB_SRC) $(COMMON_SRC) src/common/*.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $(SANITIZE) -o $@ $(LIB_SRC) $(COMMON_SRC)
 
 $(OBJ_BIN): $(OBJ_SRC) $(COMMON_SRC) src/common/*.h
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $(SANITIZE) -o $@ $(OBJ_SRC) $(COMMON_SRC)
 
-$(CC_BIN): $(CC_SRC) $(COMMON_SRC) src/cc/*.h src/common/*.h
+$(CC_BIN): $(CC_SRC) $(COMMON_SRC) src/cc/*.h src/as/*.h src/ld/*.h src/common/*.h
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $(SANITIZE) -o $@ $(CC_SRC) $(COMMON_SRC)
 
@@ -59,8 +66,12 @@ cc: $(AS_BIN) $(LD_BIN) $(CC_BIN)
 
 # Our object format: the same programs linked from ELF and from .كائن objects
 # must give byte-identical executables.
-objfmt: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(OBJ_BIN)
+objfmt: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(OBJ_BIN) $(LIB_BIN)
 	./tools/run_obj_tests.sh
+
+# مترجم building whole projects: incremental builds, stale objects, libraries.
+build-mode: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(LIB_BIN)
+	./tools/run_build_tests.sh
 
 # Random programs: ours vs GNU as and GNU ld (slow; not part of `make test`).
 fuzz: $(AS_BIN) $(LD_BIN)
@@ -75,7 +86,7 @@ spec-check:
 	python3 -I tools/gen_spec.py docs/spec-language.src.md $(BUILD)/spec-language.md
 	cmp -s $(BUILD)/spec-language.md docs/spec-language.md || { echo "docs/spec-language.md is stale: run make spec"; exit 1; }
 
-test: unit oracle asm link cc objfmt spec-check
+test: unit oracle asm link cc objfmt build-mode spec-check
 
 clean:
 	rm -rf $(BUILD)

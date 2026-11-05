@@ -1,15 +1,21 @@
 /* main.c - مترجم: the غرة compiler.
- * Usage: مترجم رئيسي.غرة خرج.تجميع [مسار_بحث ...]
- * Follows the imports from the root module, checks the whole program and
- * writes one Arabic assembly file (assumption A37). */
+ * Usage:
+ *   مترجم رئيسي.غرة [مسار_بحث | ملف.o | ملف.كائن | ملف.مكتبة ...]
+ *     build: one .كائن per module in بناء/ (only what is out of date), then
+ *     link بناء/رئيسي (decision 37).
+ *   مترجم رئيسي.غرة خرج.تجميع [مسار_بحث ...]
+ *     one Arabic assembly file for the whole program (assumption A37). */
 #include "cc.h"
 
 #include "../common/chars.h"
 #include "../common/diag.h"
+#include "../common/obj.h"
 #include "../common/rt.h"
 #include "../common/utf8.h"
 
 #include <string.h>
+
+#include "tools.h"
 
 typedef struct {
     Arena *arena;
@@ -17,6 +23,10 @@ typedef struct {
     size_t ndirs;
     Buf modules;          /* Module*, dependencies first */
     int failed;
+    ObjLib *libs;         /* libraries (.مكتبة) given on the command line */
+    const char **lib_paths;
+    RtBuf *lib_files;
+    size_t nlibs;
 } Loader;
 
 void cc_set_file(const char *path)
@@ -24,18 +34,31 @@ void cc_set_file(const char *path)
     diag_set_file(path);
 }
 
-static char *join_path(Arena *a, const char *dir, const uint8_t *dotted, size_t len)
+/* dir/a/b<ext> for the module a.b */
+static char *join_path_ext(Arena *a, const char *dir, const uint8_t *dotted, size_t len,
+                           const char *ext)
 {
-    size_t dl = strlen(dir), i, n = 0;
-    char *p = arena_alloc(a, dl + len + 16);
+    size_t dl = strlen(dir), el = strlen(ext), i, n = 0;
+    char *p = arena_alloc(a, dl + len + el + 2);
     memcpy(p, dir, dl);
     n = dl;
     if (n > 0 && p[n - 1] != '/') p[n++] = '/';
     for (i = 0; i < len; i++) p[n++] = dotted[i] == '.' ? '/' : (char)dotted[i];
-    memcpy(p + n, ".غرة", strlen(".غرة"));
-    n += strlen(".غرة");
+    memcpy(p + n, ext, el);
+    n += el;
     p[n] = 0;
     return p;
+}
+
+static char *join_path(Arena *a, const char *dir, const uint8_t *dotted, size_t len)
+{
+    return join_path_ext(a, dir, dotted, len, ".غرة");
+}
+
+static int ends_with(const char *s, const char *suffix)
+{
+    size_t n = strlen(s), k = strlen(suffix);
+    return n >= k && memcmp(s + n - k, suffix, k) == 0;
 }
 
 static Module *find_loaded(Loader *l, const uint8_t *name, size_t len)
@@ -80,6 +103,80 @@ static int parse_file(Loader *l, Module *m, RtBuf *src)
 }
 
 static Module *load(Loader *l, const uint8_t *name, size_t len, const char *path, const Tok *from);
+static int load_imports(Loader *l, Module *m);
+
+/* move to the end: dependencies come first */
+static void move_to_end(Loader *l, Module *m)
+{
+    Module **ms = (Module **)l->modules.data;
+    size_t n = l->modules.len / sizeof *ms, k;
+    for (k = 0; k < n; k++) {
+        if (ms[k] == m) {
+            memmove(&ms[k], &ms[k + 1], (n - k - 1) * sizeof *ms);
+            ms[n - 1] = m;
+            break;
+        }
+    }
+}
+
+/* Parses an interface text (decision 36) as a module without bodies. */
+static int parse_interface(Loader *l, Module *m, const ObjIface *f)
+{
+    RtBuf text;
+    text.data = (uint8_t *)f->text;
+    text.len = f->text_len;
+    m->interface_only = 1;
+    m->iface_hash = f->hash;
+    return parse_file(l, m, &text);
+}
+
+/* Interface of module m from an object image; 1 if it is that module. */
+static int iface_of(const uint8_t *data, size_t len, const Module *m, ObjIface *f)
+{
+    ObjView v;
+    return obj_parse(data, len, &v) == 0 && obj_iface(&v, f) == 0 &&
+           bytes_eq(f->module, f->module_len, m->name, m->name_len);
+}
+
+/* Looks for the module as dir/a/b.كائن, then in the given libraries.
+ * Returns 1 if found and parsed, 0 if not found, -1 on error. */
+static int load_compiled(Loader *l, Module *m, const Tok *from)
+{
+    size_t i;
+    for (i = 0; i < l->ndirs; i++) {
+        char *candidate = join_path_ext(l->arena, l->dirs[i], m->name, m->name_len, ".كائن");
+        RtBuf file;
+        ObjIface f;
+        if (rt_read_file(candidate, &file) != 0) continue;
+        if (!iface_of(file.data, file.len, m, &f)) {
+            diag_plain2(D_LINK_BAD_OBJECT, candidate, NULL);
+            rt_free(file.data);
+            return -1;
+        }
+        m->path = candidate;
+        m->obj_path = candidate;
+        if (parse_interface(l, m, &f) != 0) {
+            rt_free(file.data);
+            return -1;
+        }
+        rt_free(file.data);
+        return 1;
+    }
+    for (i = 0; i < l->nlibs; i++) {
+        ObjLibMember mem;
+        ObjIface f;
+        uint32_t k;
+        for (k = 0; obj_lib_member(&l->libs[i], k, &mem) == 0; k++) {
+            if (iface_of(mem.data, mem.len, m, &f)) {
+                m->path = l->lib_paths[i];
+                m->obj_path = l->lib_paths[i];
+                return parse_interface(l, m, &f) == 0 ? 1 : -1;
+            }
+        }
+    }
+    (void)from;
+    return 0;
+}
 
 static int load_imports(Loader *l, Module *m)
 {
@@ -122,6 +219,20 @@ static Module *load(Loader *l, const uint8_t *name, size_t len, const char *path
             }
         }
         if (path == NULL) {
+            /* a compiled module: its object carries the interface */
+            int found = load_compiled(l, m, from);
+            if (found < 0) return NULL;
+            if (found > 0) {
+                m->visiting = 1;
+                buf_bytes(&l->modules, &m, sizeof m);
+                if (load_imports(l, m) != 0) return NULL;
+                m->visiting = 0;
+                m->loaded = 1;
+                move_to_end(l, m);
+                return m;
+            }
+        }
+        if (path == NULL) {
             diag_error(from->line, from->col, D_CC_MODULE_NOT_FOUND, name, len);
             return NULL;
         }
@@ -130,6 +241,7 @@ static Module *load(Loader *l, const uint8_t *name, size_t len, const char *path
         return NULL;
     }
     m->path = path;
+    m->source_hash = obj_fnv1a(src.data, src.len);
     if (parse_file(l, m, &src) != 0) {
         rt_free(src.data);
         return NULL;
@@ -153,19 +265,144 @@ static Module *load(Loader *l, const uint8_t *name, size_t len, const char *path
     }
     m->visiting = 0;
     m->loaded = 1;
-    /* move to the end: dependencies come first */
-    {
-        Module **ms = (Module **)l->modules.data;
-        size_t n = l->modules.len / sizeof *ms, k;
-        for (k = 0; k < n; k++) {
-            if (ms[k] == m) {
-                memmove(&ms[k], &ms[k + 1], (n - k - 1) * sizeof *ms);
-                ms[n - 1] = m;
-                break;
+    move_to_end(l, m);
+    return m;
+}
+
+/* ------------------------------------------------------------------ */
+/* Build mode (decision 37)                                            */
+
+static char *concat(Arena *a, const char *x, const char *y)
+{
+    size_t nx = strlen(x), ny = strlen(y);
+    char *p = arena_alloc(a, nx + ny + 1);
+    memcpy(p, x, nx);
+    memcpy(p + nx, y, ny + 1);
+    return p;
+}
+
+/* Creates the directories above a file path. */
+static int make_parent(Arena *a, const char *file)
+{
+    const char *slash = strrchr(file, '/');
+    char *dir;
+    if (slash == NULL) return 0;
+    dir = arena_alloc(a, (size_t)(slash - file) + 1);
+    memcpy(dir, file, (size_t)(slash - file));
+    dir[slash - file] = 0;
+    return rt_make_dirs(dir);
+}
+
+/* The interface region this module's object must carry now. */
+static int encode_iface(Arena *a, Module *m, Buf *region)
+{
+    Buf text;
+    const uint8_t **names = arena_alloc(a, (m->nimports + 1) * sizeof *names);
+    size_t *lens = arena_alloc(a, (m->nimports + 1) * sizeof *lens);
+    uint64_t *hashes = arena_alloc(a, (m->nimports + 1) * sizeof *hashes);
+    size_t i;
+    buf_init(&text);
+    if (iface_text(m, &text) != 0) {
+        cc_set_file(m->path);
+        diag_error(1, 1, D_CC_IFACE, m->name, m->name_len);
+        buf_free(&text);
+        return -1;
+    }
+    m->iface_hash = obj_fnv1a(text.data, text.len);
+    for (i = 0; i < m->nimports; i++) {
+        names[i] = m->imports[i].module->name;
+        lens[i] = m->imports[i].module->name_len;
+        hashes[i] = m->imports[i].module->iface_hash;
+    }
+    obj_iface_encode(m->name, m->name_len, m->source_hash, m->nimports, names, lens, hashes,
+                     text.data, text.len, region);
+    buf_free(&text);
+    return 0;
+}
+
+/* Up to date: the object exists and carries exactly this interface region
+ * (same source hash, same hashes of the imported interfaces). */
+static int up_to_date(const char *path, const Buf *region)
+{
+    RtBuf file;
+    ObjView v;
+    int same;
+    if (rt_read_file(path, &file) != 0) return 0;
+    same = obj_parse(file.data, file.len, &v) == 0 && v.iface_size == region->len &&
+           memcmp(file.data + v.iface_off, region->data, region->len) == 0;
+    rt_free(file.data);
+    return same;
+}
+
+static int build(Arena *a, Program *prog, const char *rootdir, const uint8_t *stem,
+                 size_t stem_len, const char **dirs, size_t ndirs, const char **extras,
+                 size_t nextras)
+{
+    const char *out_dir = rootdir[0] == '.' && rootdir[1] == 0 ? "بناء" : concat(a, rootdir, "/بناء");
+    Buf inputs;
+    size_t i;
+    int rc = 0;
+    char *exe;
+
+    buf_init(&inputs);
+    for (i = 0; i < prog->nmodules && rc == 0; i++) {
+        Module *m = prog->modules[i];
+        Buf region, text;
+        char *obj;
+        if (m->interface_only) {
+            buf_bytes(&inputs, &m->obj_path, sizeof m->obj_path);
+            continue;
+        }
+        obj = join_path_ext(a, out_dir, m->name, m->name_len, ".كائن");
+        buf_bytes(&inputs, &obj, sizeof obj);
+        buf_init(&region);
+        if (encode_iface(a, m, &region) != 0) {
+            rc = 1;
+        } else if (!up_to_date(obj, &region)) {
+            char *asm_name = join_path_ext(a, out_dir, m->name, m->name_len, ".تجميع");
+            buf_init(&text);
+            prog->only = m;
+            gen_program(prog, &text);
+            if (make_parent(a, obj) != 0) {
+                diag_plain(D_CANNOT_WRITE, obj);
+                rc = 2;
+            } else if (tool_assemble(text.data, text.len, asm_name, obj, region.data, region.len) != 0) {
+                rc = 1;
             }
+            buf_free(&text);
+        }
+        buf_free(&region);
+    }
+    /* the start file: lib/runtime/تشغيل.تجميع from a search path */
+    for (i = 1; i < ndirs && rc == 0; i++) {
+        char *rt_src = concat(a, dirs[i], "/runtime/تشغيل.تجميع");
+        RtBuf src;
+        if (rt_read_file(rt_src, &src) == 0) {
+            char *obj = concat(a, out_dir, "/تشغيل.كائن");
+            if (rt_make_dirs(out_dir) != 0 ||
+                tool_assemble(src.data, src.len, rt_src, obj, NULL, 0) != 0) {
+                rc = 1;
+            }
+            rt_free(src.data);
+            buf_bytes(&inputs, &obj, sizeof obj);
+            break;
         }
     }
-    return m;
+    for (i = 0; i < nextras; i++) {
+        buf_bytes(&inputs, &extras[i], sizeof extras[i]);
+    }
+    if (rc == 0) {
+        char *name = arena_alloc(a, stem_len + 2);
+        name[0] = '/';
+        memcpy(name + 1, stem, stem_len);
+        name[stem_len + 1] = 0;
+        exe = concat(a, out_dir, name);
+        if (tool_link(exe, (const char *const *)inputs.data, inputs.len / sizeof(char *)) != 0) {
+            rc = 1;
+        }
+    }
+    buf_free(&inputs);
+    return rc;
 }
 
 int main(int argc, char **argv)
@@ -179,12 +416,18 @@ int main(int argc, char **argv)
     uint8_t *stem;
     size_t stem_len, i;
     int rc = 0;
+    int build_mode;
+    int first_path;
+    const char **extras;
+    size_t nextras = 0;
 
-    if (argc < 3) {
+    if (argc < 2) {
         diag_plain(D_CC_USAGE, NULL);
         return 2;
     }
     input = argv[1];
+    build_mode = argc < 3 || !ends_with(argv[2], ".تجميع");
+    first_path = build_mode ? 2 : 3;
     arena_init(&arena);
     types_init(&arena);
     memset(&l, 0, sizeof l);
@@ -201,10 +444,32 @@ int main(int argc, char **argv)
         rootdir[0] = '.';
         rootdir[1] = 0;
     }
-    l.ndirs = (size_t)(argc - 3) + 1;
-    l.dirs = arena_alloc(&arena, l.ndirs * sizeof *l.dirs);
-    l.dirs[0] = rootdir;
-    for (i = 3; i < (size_t)argc; i++) l.dirs[i - 2] = argv[i];
+    l.dirs = arena_alloc(&arena, ((size_t)argc + 1) * sizeof *l.dirs);
+    l.libs = arena_alloc(&arena, ((size_t)argc + 1) * sizeof *l.libs);
+    l.lib_paths = arena_alloc(&arena, ((size_t)argc + 1) * sizeof *l.lib_paths);
+    l.lib_files = arena_alloc(&arena, ((size_t)argc + 1) * sizeof *l.lib_files);
+    extras = arena_alloc(&arena, ((size_t)argc + 1) * sizeof *extras);
+    l.dirs[l.ndirs++] = rootdir;
+    for (i = (size_t)first_path; i < (size_t)argc; i++) {
+        const char *arg = argv[i];
+        if (ends_with(arg, ".مكتبة")) {
+            RtBuf *f = &l.lib_files[l.nlibs];
+            if (rt_read_file(arg, f) != 0) {
+                diag_plain(D_CANNOT_READ, arg);
+                rc = 2;
+            } else if (obj_lib_parse(f->data, f->len, &l.libs[l.nlibs]) != 0) {
+                diag_plain2(D_LINK_BAD_OBJECT, arg, NULL);
+                rt_free(f->data);
+                rc = 1;
+            } else {
+                l.lib_paths[l.nlibs++] = arg;
+            }
+        } else if (ends_with(arg, ".o") || ends_with(arg, ".كائن")) {
+            extras[nextras++] = arg;
+        } else {
+            l.dirs[l.ndirs++] = arg;
+        }
+    }
 
     /* the root module is named after its file */
     {
@@ -215,23 +480,29 @@ int main(int argc, char **argv)
         memcpy(stem, base, stem_len);
     }
 
-    if (!valid_module_name(stem, stem_len)) {
+    if (rc == 0 && !valid_module_name(stem, stem_len)) {
         diag_plain(D_CC_BAD_MODULE_NAME, input);
-        arena_free(&arena);
-        return 1;
+        rc = 1;
     }
 
     memset(&prog, 0, sizeof prog);
     prog.arena = &arena;
     buf_init(&prog.strings);
-    prog.root = load(&l, stem, stem_len, input, NULL);
-    if (prog.root == NULL || diag_count() != 0) {
+    if (rc == 0) {
+        prog.root = load(&l, stem, stem_len, input, NULL);
+    }
+    if (rc != 0) {
+        /* already reported */
+    } else if (prog.root == NULL || diag_count() != 0) {
         rc = 1;
     } else {
         prog.modules = (Module **)l.modules.data;
         prog.nmodules = l.modules.len / sizeof(Module *);
         if (check_program(&prog) != 0 || diag_count() != 0) {
             rc = 1;
+        } else if (build_mode) {
+            rc = build(&arena, &prog, rootdir, stem, stem_len, l.dirs, l.ndirs,
+                       extras, nextras);
         } else {
             buf_init(&out);
             gen_program(&prog, &out);
@@ -241,6 +512,9 @@ int main(int argc, char **argv)
             }
             buf_free(&out);
         }
+    }
+    for (i = 0; i < l.nlibs; i++) {
+        rt_free(l.lib_files[i].data);
     }
     buf_free(&prog.strings);
     buf_free(&l.modules);

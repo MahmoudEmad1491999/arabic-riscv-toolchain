@@ -49,7 +49,32 @@ typedef struct {
     size_t nsyms;
     const ObjReloc *relocs;
     size_t nrelocs;
+    const uint8_t *iface;   /* encoded interface region (obj_iface_encode), or NULL */
+    size_t iface_len;
 } ObjOut;
+
+/* Module interface (docs/spec-object.md, decisions 35-36). */
+typedef struct {
+    const uint8_t *module;  /* dotted module name */
+    uint32_t module_len;
+    uint64_t hash;          /* FNV-1a of text */
+    uint64_t source_hash;   /* FNV-1a of the module's source file */
+    uint32_t nimports;
+    const uint8_t *imports; /* encoded list, read with obj_iface_import */
+    const uint8_t *text;    /* غرة source of the interface */
+    uint32_t text_len;
+} ObjIface;
+
+uint64_t obj_fnv1a(const uint8_t *data, size_t len);
+
+/* Encoding: the imports are given as parallel arrays. */
+void obj_iface_encode(const uint8_t *module, size_t module_len, uint64_t source_hash,
+                      size_t nimports, const uint8_t *const *names, const size_t *lens,
+                      const uint64_t *hashes, const uint8_t *text, size_t text_len, Buf *out);
+/* Decodes and checks a region; returns 0 if it is well formed. */
+int obj_iface_decode(const uint8_t *data, size_t len, ObjIface *out);
+void obj_iface_import(const ObjIface *f, uint32_t i, const uint8_t **name, uint32_t *len,
+                      uint64_t *hash);
 
 /* Serialises into out. */
 void obj_serialize(const ObjOut *o, Buf *out);
@@ -68,8 +93,33 @@ typedef struct {
 int obj_is_object(const uint8_t *data, size_t len);   /* magic check */
 /* Returns 0 if the file is well formed (every offset, index and kind checked). */
 int obj_parse(const uint8_t *data, size_t len, ObjView *v);
+/* The interface of a parsed object; returns -1 if it has none. */
+int obj_iface(const ObjView *v, ObjIface *out);
 void obj_sym(const ObjView *v, uint32_t i, ObjSym *out);
 void obj_reloc(const ObjView *v, uint32_t i, ObjReloc *out);
+
+/* Libraries (.مكتبة, decision 38): several objects in one file. */
+typedef struct {
+    const uint8_t *file;
+    size_t len;
+    uint32_t n;
+} ObjLib;
+
+typedef struct {
+    const uint8_t *data;    /* the member's .كائن image */
+    size_t len;
+    const uint8_t *name;    /* file name it was added as */
+    uint32_t name_len;
+} ObjLibMember;
+
+#define OBJ_LIB_HEADER 16u
+#define OBJ_LIB_ENTRY  24u
+
+int obj_is_lib(const uint8_t *data, size_t len);
+int obj_lib_parse(const uint8_t *data, size_t len, ObjLib *lib);   /* 0 if well formed */
+int obj_lib_member(const ObjLib *lib, uint32_t i, ObjLibMember *m); /* -1 past the end */
+void obj_lib_serialize(size_t n, const uint8_t *const *names, const size_t *name_lens,
+                       const uint8_t *const *datas, const size_t *sizes, Buf *out);
 
 /* Text form for people (docs/spec-object.md). */
 void obj_dump(const ObjView *v, Buf *out);

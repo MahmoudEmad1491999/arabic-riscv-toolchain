@@ -78,6 +78,6 @@ void as_free(Assembler *as);
 int as_write_elf(Assembler *as, const char *path);
 
 /* Writes our own object format (.كائن). Returns 0 on success. */
-int as_write_obj(Assembler *as, const char *path);
+int as_write_obj(Assembler *as, const char *path, const uint8_t *iface, size_t iface_len);
 
 #endif

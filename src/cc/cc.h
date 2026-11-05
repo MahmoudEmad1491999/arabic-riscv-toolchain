@@ -42,6 +42,8 @@ typedef struct Program {
     Module *root;
     Buf strings;          /* Expr* of every string literal, for the data section */
     Decl *main_func;
+    int no_main;          /* compiling a library module: no رئيسية needed */
+    Module *only;         /* gen: emit this module only (NULL: every module with bodies) */
 } Program;
 
 int check_program(Program *p);
@@ -50,6 +52,9 @@ int check_program(Program *p);
 ConstVal cv_from_u64(uint64_t v);
 int cv_fits(ConstVal v, const Type *t);
 uint64_t cv_bits(ConstVal v); /* two's complement bits */
+
+/* iface.c: the module's interface as غرة text (decision 36) */
+int iface_text(Module *m, Buf *out);
 
 /* gen.c */
 int gen_program(Program *p, Buf *out);

@@ -87,6 +87,8 @@ void ld_init(Linker *ld, Arena *a)
     int k;
     memset(ld, 0, sizeof *ld);
     ld->arena = a;
+    buf_init(&ld->libs);
+    buf_init(&ld->lib_files);
     buf_init(&ld->globals);
     for (k = 0; k < OUT_COUNT; k++) {
         buf_init(&ld->out_data[k]);
@@ -103,6 +105,15 @@ void ld_free(Linker *ld)
     }
     rt_free(ld->objs);
     buf_free(&ld->globals);
+    {
+        RtBuf *f = (RtBuf *)ld->lib_files.data;
+        size_t n = ld->lib_files.len / sizeof *f;
+        for (i = 0; i < n; i++) {
+            rt_free(f[i].data);
+        }
+        buf_free(&ld->lib_files);
+        buf_free(&ld->libs);
+    }
     for (k = 0; k < OUT_COUNT; k++) {
         buf_free(&ld->out_data[k]);
     }
@@ -243,6 +254,9 @@ static int read_native(Linker *ld, InObj *o)
             wr64(e + 16, (uint64_t)r.extra);
         }
     }
+    if (v.iface_size != 0) {
+        o->has_iface = obj_iface_decode(img + v.iface_off, (size_t)v.iface_size, &o->iface) == 0;
+    }
     rt_free(o->file.data);
     o->file.data = img;
     o->file.len = base + (size_t)v.nrelocs * ELF_RELA_SIZE;
@@ -263,6 +277,22 @@ int ld_read_object(Linker *ld, const char *path)
     if (rt_read_file(path, &o.file) != 0) {
         diag_plain2(D_CANNOT_READ, path, NULL);
         return -1;
+    }
+    if (obj_is_lib(o.file.data, o.file.len)) {
+        ObjLib lib;
+        uint32_t k;
+        LibMember lm;
+        if (obj_lib_parse(o.file.data, o.file.len, &lib) != 0) {
+            rt_free(o.file.data);
+            return bad_object(path);
+        }
+        buf_bytes(&ld->lib_files, &o.file, sizeof o.file);
+        for (k = 0; obj_lib_member(&lib, k, &lm.mem) == 0; k++) {
+            lm.lib = path;
+            lm.used = 0;
+            buf_bytes(&ld->libs, &lm, sizeof lm);
+        }
+        return 0;
     }
     if (obj_is_object(o.file.data, o.file.len)) {
         if (read_native(ld, &o) != 0) {
@@ -745,13 +775,136 @@ static int apply_relocs(Linker *ld, InObj *o, InSec *rs)
     return rc;
 }
 
+static const char *cstr(Linker *ld, const uint8_t *s, size_t n)
+{
+    char *c = arena_alloc(ld->arena, n + 1);
+    memcpy(c, s, n);
+    c[n] = 0;
+    return c;
+}
+
+/* Is a global name defined / referenced but undefined in the linked objects? */
+static int name_state(Linker *ld, const uint8_t *name, size_t n, int *defined)
+{
+    size_t i, j;
+    int referenced = 0;
+    *defined = 0;
+    for (i = 0; i < ld->nobjs; i++) {
+        InObj *o = &ld->objs[i];
+        for (j = 1; j < o->nsyms; j++) {
+            InSym *y = &o->syms[j];
+            if (!is_global_bind(y->bind) || strlen(y->name) != n || memcmp(y->name, name, n) != 0) {
+                continue;
+            }
+            if (y->shndx == SHN_UNDEF) referenced = 1; else *defined = 1;
+        }
+    }
+    return referenced;
+}
+
+/* Library members are linked only when they define a name that is still
+ * needed (the entry point counts as needed); repeated until nothing changes. */
+static int pull_members(Linker *ld)
+{
+    LibMember *ms = (LibMember *)ld->libs.data;
+    size_t n = ld->libs.len / sizeof *ms, i;
+    int changed = 1;
+    static const char entry[] = "_بداية";
+    while (changed) {
+        changed = 0;
+        for (i = 0; i < n; i++) {
+            ObjView v;
+            uint32_t k;
+            int want = 0;
+            if (ms[i].used) continue;
+            if (obj_parse(ms[i].mem.data, ms[i].mem.len, &v) != 0) {
+                return bad_object(ms[i].lib);
+            }
+            for (k = 0; k < v.nsyms && !want; k++) {
+                ObjSym y;
+                int defined;
+                obj_sym(&v, k, &y);
+                if (y.kind != OBJ_EXPORTED) continue;
+                want = name_state(ld, y.name, y.len, &defined) && !defined;
+                if (!defined && y.len == sizeof entry - 1 && memcmp(y.name, entry, y.len) == 0) {
+                    want = 1;
+                }
+            }
+            if (want) {
+                InObj o;
+                size_t pl = strlen(ms[i].lib);
+                char *p = arena_alloc(ld->arena, pl + ms[i].mem.name_len + 3);
+                memset(&o, 0, sizeof o);
+                memcpy(p, ms[i].lib, pl);
+                p[pl] = '(';
+                memcpy(p + pl + 1, ms[i].mem.name, ms[i].mem.name_len);
+                p[pl + 1 + ms[i].mem.name_len] = ')';
+                p[pl + 2 + ms[i].mem.name_len] = 0;
+                o.path = p;
+                o.file.len = ms[i].mem.len;
+                o.file.data = rt_alloc(o.file.len + 1);
+                memcpy(o.file.data, ms[i].mem.data, o.file.len);
+                if (read_native(ld, &o) != 0) {
+                    rt_free(o.file.data);
+                    return -1;
+                }
+                ld->objs = rt_realloc(ld->objs, (ld->nobjs + 1) * sizeof *ld->objs);
+                ld->objs[ld->nobjs++] = o;
+                ms[i].used = 1;
+                changed = 1;
+            }
+        }
+    }
+    return 0;
+}
+
+/* Every object must have been compiled against the interfaces of the
+ * modules it is linked with (spec-language 8.2): same hash, or stale. */
+static int check_interfaces(Linker *ld)
+{
+    size_t i, j;
+    uint32_t k;
+    int rc = 0;
+    for (i = 0; i < ld->nobjs; i++) {
+        InObj *a = &ld->objs[i];
+        if (!a->has_iface) continue;
+        for (j = 0; j < i; j++) {
+            InObj *b = &ld->objs[j];
+            if (b->has_iface && b->iface.module_len == a->iface.module_len &&
+                memcmp(b->iface.module, a->iface.module, a->iface.module_len) == 0) {
+                diag_plain2(D_LINK_DUP_MODULE, cstr(ld, a->iface.module, a->iface.module_len), a->path);
+                rc = -1;
+            }
+        }
+    }
+    for (i = 0; i < ld->nobjs; i++) {
+        InObj *a = &ld->objs[i];
+        if (!a->has_iface) continue;
+        for (k = 0; k < a->iface.nimports; k++) {
+            const uint8_t *name;
+            uint32_t n;
+            uint64_t h;
+            obj_iface_import(&a->iface, k, &name, &n, &h);
+            for (j = 0; j < ld->nobjs; j++) {
+                InObj *b = &ld->objs[j];
+                if (b->has_iface && b->iface.module_len == n &&
+                    memcmp(b->iface.module, name, n) == 0 && b->iface.hash != h) {
+                    diag_plain2(D_LINK_STALE, cstr(ld, name, n), a->path);
+                    rc = -1;
+                }
+            }
+        }
+    }
+    return rc;
+}
+
 int ld_link(Linker *ld)
 {
     size_t i, j;
     int rc = 0;
     GlobalSym *entry;
 
-    if (resolve_symbols(ld) != 0 || layout(ld) != 0) {
+    if (pull_members(ld) != 0 || check_interfaces(ld) != 0 || resolve_symbols(ld) != 0 || layout(ld) != 0) {
         return -1;
     }
     for (i = 0; i < ld->nobjs; i++) {

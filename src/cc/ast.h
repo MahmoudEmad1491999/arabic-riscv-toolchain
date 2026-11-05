@@ -151,6 +151,7 @@ struct Expr {
     int member_index;     /* field index / enum member index */
     int bracketed;        /* the expression was written in brackets */
     int string_id;        /* E_STRING: label number */
+    struct Module *str_module; /* E_STRING: module whose object holds it */
 };
 
 /* ------------------------------------------------------------------ */
@@ -274,6 +275,10 @@ struct Module {
     size_t nimports;
     Decl **decls;
     size_t ndecls;
+    int interface_only;   /* read from an object: declarations without bodies */
+    uint64_t source_hash; /* FNV-1a of the source file */
+    uint64_t iface_hash;  /* FNV-1a of the interface text */
+    const char *obj_path; /* interface_only: the object (or archive) that has it */
     int visiting;         /* import cycle detection */
     int loaded;
 };

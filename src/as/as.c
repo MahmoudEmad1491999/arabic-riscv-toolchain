@@ -1591,7 +1591,7 @@ static int obj_reloc_kind(uint32_t type)
     }
 }
 
-int as_write_obj(Assembler *as, const char *path)
+int as_write_obj(Assembler *as, const char *path, const uint8_t *iface, size_t iface_len)
 {
     Symbol **syms = (Symbol **)as->symbols.data;
     size_t nsyms = as->symbols.len / sizeof *syms;
@@ -1664,6 +1664,8 @@ int as_write_obj(Assembler *as, const char *path)
         o.nsyms = osyms.len / sizeof(ObjSym);
         o.relocs = (const ObjReloc *)orels.data;
         o.nrelocs = orels.len / sizeof(ObjReloc);
+        o.iface = iface;
+        o.iface_len = iface_len;
         obj_serialize(&o, &out);
         rc = rt_write_file(path, out.data, out.len);
     }

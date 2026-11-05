@@ -40,3 +40,6 @@ Decisions made by the project owner. Newest last.
 33. Our object format: extension `.كائن`, viewer tool `عارض`, symbol kinds `خاص` / `مصدر` / `مستورد`, fixed sections `نص` / `بيانات` / `ثوابت` / `أصفار`. Spec in docs/spec-object.md.
 34. Private symbols are stored by name (helps debugging), not only by number.
 35. The module-interface hash is 64-bit FNV-1a.
+36. A module's interface inside its `.كائن` is غرة source text: the exported declarations, constants already evaluated. The compiler reads it back with its own parser; the FNV-1a hash is taken over this text.
+37. `مترجم رئيسي.غرة` puts the per-module objects in `بناء/` next to the root module, mirroring module paths, and the executable at `بناء/<root>`.
+38. Libraries are `.مكتبة` files made by a new tool `محزم` (`محزم مكتبة.مكتبة أ.كائن ب.كائن…`). `رابط` takes from them only the modules that are needed.

@@ -78,29 +78,48 @@ for src in "$ROOT"/tests/cc/*.غرة; do
     report "obj/cc/$name" $ok
 done
 
-# damaged objects: flip each header and table byte of one object; the linker
-# and the viewer must reject or accept, never crash (ASan would abort).
+# damaged objects and libraries: random bytes changed or cut off; the
+# linker, the viewer and the compiler (importing the module) must reject or
+# accept, never crash (ASan would abort).
 src="$ROOT/tests/link/برنامج_متعدد"
 first=$(ls "$src"/*.تجميع | head -1)
 "$AS" "$first" "$OUT/victim.كائن" || exit 1
-size=$(wc -c < "$OUT/victim.كائن")
+M="$OUT/mut"
+rm -rf "$M"; mkdir -p "$M/اختبار_وحدات"
+cp "$ROOT/tests/cc/وحدات.غرة" "$M/"
+cp "$ROOT/tests/cc/اختبار_وحدات/حساب.غرة" "$M/اختبار_وحدات/"
+"$CC" "$M/وحدات.غرة" "$ROOT/lib" || exit 1
+"$ROOT/build/محزم" "$OUT/victim.مكتبة" "$M/بناء/غرة/نصوص.كائن" "$M/بناء/تشغيل.كائن" || exit 1
 ok=1
-python3 -I - "$OUT/victim.كائن" "$OUT" "$LD" "$VIEW" <<'PY' || ok=0
-import subprocess, sys, random
-path, out, ld, view = sys.argv[1:5]
-data = bytearray(open(path, 'rb').read())
+python3 -I - "$OUT" "$LD" "$VIEW" "$CC" "$ROOT/lib" "$OUT/victim.كائن" "$M/بناء/اختبار_وحدات/حساب.كائن" "$OUT/victim.مكتبة" <<'PY' || ok=0
+import os, subprocess, sys, random
+out, ld, view, cc, lib = sys.argv[1:6]
+victims = sys.argv[6:]
 rnd = random.Random(7)
-for i in range(400):
-    d = bytearray(data)
-    for _ in range(1 + i % 3):
-        d[rnd.randrange(len(d) if i % 2 else min(len(d), 160))] = rnd.randrange(256)
-    if i % 5 == 0:
-        d = d[:rnd.randrange(len(d))]
-    open(out + '/mut.كائن', 'wb').write(d)
-    for cmd in ([view, out + '/mut.كائن'], [ld, out + '/mut.out', out + '/mut.كائن']):
-        r = subprocess.run(cmd, capture_output=True)
-        if r.returncode not in (0, 1, 2) or b'Sanitizer' in r.stderr:
-            print('crash', i, cmd[0]); sys.exit(1)
+proj = out + '/mutproj'
+os.makedirs(proj + '/اختبار_وحدات', exist_ok=True)
+open(proj + '/رئيسي.غرة', 'w').write('استورد اختبار_وحدات.حساب؛\nعام دالة رئيسية)(: طبيعي٨ } ارجع ٠؛ {\n')
+for vi, path in enumerate(victims):
+    data = bytearray(open(path, 'rb').read())
+    ext = '.مكتبة' if path.endswith('.مكتبة') else '.كائن'
+    for i in range(300):
+        d = bytearray(data)
+        for _ in range(1 + i % 3):
+            d[rnd.randrange(len(d) if i % 2 else min(len(d), 200))] = rnd.randrange(256)
+        if i % 7 == 0:
+            d = d[:rnd.randrange(len(d))]
+        mp = out + '/mut' + ext
+        open(mp, 'wb').write(d)
+        cmds = [[ld, out + '/mut.out', mp]]
+        if ext == '.كائن':
+            cmds.append([view, mp])
+            if vi == 1:
+                open(proj + '/اختبار_وحدات/حساب.كائن', 'wb').write(d)
+                cmds.append([cc, proj + '/رئيسي.غرة', lib])
+        for cmd in cmds:
+            r = subprocess.run(cmd, capture_output=True)
+            if r.returncode not in (0, 1, 2) or b'Sanitizer' in r.stderr:
+                print('crash', path, i, cmd[0], r.stderr[-400:]); sys.exit(1)
 PY
 report "obj/mutation" $ok
 

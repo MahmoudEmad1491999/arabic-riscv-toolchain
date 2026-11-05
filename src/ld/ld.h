@@ -13,6 +13,7 @@
 #include <stdint.h>
 
 #include "../common/buf.h"
+#include "../common/obj.h"
 #include "../common/rt.h"
 
 enum {
@@ -59,6 +60,8 @@ typedef struct {
     InSec *secs;
     InSym *syms;
     size_t nsyms;
+    int has_iface;     /* our format with a module interface */
+    ObjIface iface;    /* points into file */
 } InObj;
 
 struct GlobalSym {
@@ -85,7 +88,15 @@ typedef struct {
     Buf out_data[OUT_COUNT];  /* contents (not for .bss) */
     uint64_t entry;
     int nphdr;
+    Buf libs;                 /* LibMember: members of .مكتبة files not linked yet */
+    Buf lib_files;            /* RtBuf of each library file */
 } Linker;
+
+typedef struct {
+    const char *lib;          /* library path */
+    ObjLibMember mem;
+    int used;
+} LibMember;
 
 void ld_init(Linker *ld, Arena *a);
 void ld_free(Linker *ld);
