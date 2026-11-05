@@ -28,3 +28,7 @@ Decisions made by the project owner. Newest last.
 21. Comparison glyphs carry their on-screen meaning, like brackets: in file order `أ > ب` means "أ is less than ب" and `أ < ب` means "أ is greater than ب" (`>=` / `<=` likewise).
 22. Conditionals: `إذا`، `وإلا إذا`، `وإلا` (`وإلا إذا` is `وإلا` followed by an `إذا` statement; no extra keyword).
 23. Logical operators are words: `و`، `أو` (short-circuit), `ليس`. Their operands must be `منطقي`.
+24. Size and alignment of a type: the built-ins `مقاس)نوع(` and `محاذاة)نوع(`, both of type `حجم`. `.طول` exists only on sequences (arrays, slices, strings: bytes) and is of type `حجم`.
+25. Code-point escape in character and string literals: `\}…{` (braces in file order, the number follows the number rules), e.g. `'\}٠سج٠٠٢{'` is U+200C.
+26. Every declaration states its type, with no exception: variables, constants (`ثابت`) and parameters, even when the initial value is a literal or already typed. There is no type inference and there are no typeless named constants.
+27. Bitwise operators are words with the approved short suffix `_ب`: `و_ب`، `أو_ب`، `أو_حصري_ب`، `نفي_ب` (an approved exception to the full-word rule). `^` stays free for pointer dereference.
