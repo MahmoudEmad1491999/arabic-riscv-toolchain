@@ -12,6 +12,8 @@ The output comes first, then the objects in link order (A29). The entry point is
 
 `رابط --عاري خرج دخل...` makes a bare-metal image for `qemu-system-riscv64 -machine virt -bios none` (A61): the code starts exactly at `0x80000000`, where the machine starts executing, so `_بداية` must be the first instruction of the first input; the ELF headers stay outside the loaded image.
 
+`رابط` defines two symbols when no object does (A67): `_نهاية`, the first address after the image (end of `.bss`), and `_بداية_البيانات`, the start of the writable segment.
+
 ## Layout (A30)
 
 | Segment | Address | Contents |

@@ -451,6 +451,18 @@ static int resolve_symbols(Linker *ld)
             }
         }
     }
+    /* names the linker defines when no object does (A67) */
+    {
+        static const char *const special[] = {"_نهاية", "_بداية_البيانات"};
+        int k;
+        for (k = 0; k < 2; k++) {
+            GlobalSym *g = global_get(ld, special[k]);
+            if (!g->defined) {
+                g->defined = 1;
+                g->special = k + 1;
+            }
+        }
+    }
     /* every strong undefined reference must now be defined */
     for (i = 0; i < ld->nobjs; i++) {
         InObj *o = &ld->objs[i];
@@ -547,6 +559,12 @@ static uint64_t sym_addr(Linker *ld, InObj *o, size_t idx, int *ok)
         GlobalSym *g = y->global;
         if (g->defined != 1) {
             return 0; /* undefined weak: address 0 */
+        }
+        if (g->special == 1) {
+            return ld->out_addr[OUT_BSS] + ld->out_size[OUT_BSS]; /* end of the image */
+        }
+        if (g->special == 2) {
+            return ld->out_addr[OUT_DATA]; /* first writable byte, on its own page */
         }
         o = g->obj;
         y = &o->syms[g->sym];

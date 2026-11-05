@@ -68,6 +68,7 @@ typedef struct {
 struct GlobalSym {
     const char *name;
     int defined;
+    int special;       /* defined by the linker (A67): 1 = _نهاية, 2 = _بداية_البيانات */
     int weak;
     InObj *obj;
     size_t sym;        /* index in obj->syms */
