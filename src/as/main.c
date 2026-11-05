@@ -66,6 +66,7 @@ int main(int argc, char **argv)
         return finish(1, &src, &arena, NULL);
     }
     as_init(&as, &arena, &tl);
+    as_set_source(&as, argv[1]);
     if (as_assemble(&as) != 0) {
         return finish(1, &src, &arena, &as);
     }

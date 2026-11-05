@@ -110,6 +110,7 @@ SECTIONS = {
     ".بيانات_صفرية": ".bss",
 }
 DIRECTIVES = {
+    ".تضمين": ".incbin",
     ".عام": ".globl", ".محاذاة": ".align", ".بايت": ".byte",
     ".نصف_كلمة": ".half", ".كلمة": ".word", ".كلمة_مزدوجة": ".dword",
     ".سلسلة": ".string", ".فراغ": ".zero", ".ثابت": ".equ",
@@ -336,7 +337,8 @@ def translate_line(line):
         raise TranslitError("expected instruction or directive")
     ops = split_operands(toks[1:])
     if head in SECTIONS:
-        out.append(SECTIONS[head])
+        # GAS has .text/.data/.bss directives but no .rodata one
+        out.append(".section .rodata" if SECTIONS[head] == ".rodata" else SECTIONS[head])
     elif head == ".قسم":
         out.append(".section " + ", ".join(expr_text(o) for o in ops))
     elif head in DIRECTIVES:

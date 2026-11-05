@@ -64,9 +64,13 @@ typedef struct {
     Symbol *buckets[SYM_BUCKETS];
     Buf symbols;              /* array of Symbol*, creation order */
     Buf locals;               /* array of LocalCount */
+    const char *src_dir;      /* directory of the source file, for .تضمين */
 } Assembler;
 
 void as_init(Assembler *as, Arena *a, const TokenList *tl);
+
+/* Paths in .تضمين are relative to the directory of this source file. */
+void as_set_source(Assembler *as, const char *path);
 
 /* Runs both passes. Returns 0 if there were no errors. */
 int as_assemble(Assembler *as);

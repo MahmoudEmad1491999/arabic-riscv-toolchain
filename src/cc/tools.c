@@ -32,6 +32,7 @@ int tool_assemble(const uint8_t *text, size_t len, const char *name, const char 
         return -1;
     }
     as_init(&as, &arena, &tl);
+    as_set_source(&as, name);
     if (as_assemble(&as) != 0) {
         rc = -1;
     } else if (as_write_obj(&as, out, iface, iface_len) != 0) {

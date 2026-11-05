@@ -294,6 +294,7 @@ static const DirDef dirs[] = {
     {".سلسلة", DIR_STRING},
     {".فراغ", DIR_ZERO},
     {".ثابت", DIR_EQU},
+    {".تضمين", DIR_INCBIN},
 };
 
 DirKind find_directive(const uint8_t *name, size_t len)

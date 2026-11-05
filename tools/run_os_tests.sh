@@ -1,6 +1,7 @@
 #!/bin/sh
-# The operating system (decision 39): bare-metal images built by مترجم
-# --عاري, run on qemu-system-riscv64 -machine virt -bios none.
+# The operating system (decision 39): bare-metal images built by
+# tools/build_os.sh (user programs first, then the kernel with them embedded),
+# run on qemu-system-riscv64 -machine virt -bios none.
 #  1. os/نواة.غرة, the kernel itself: tests/os/نواة.out, exit code 0.
 #  2. tests/os/NAME.غرة: small test kernels using the os/ modules;
 #     NAME.out is the serial output, NAME.code the exit code (default 0).
@@ -21,7 +22,7 @@ for src in "$OUT"/os/*.غرة; do
     name=$(basename "$src" .غرة)
     [ -f "$ROOT/tests/os/$name.out" ] || continue
     ok=1
-    (cd "$OUT/os" && DIAG_ORDER=file "$CC" "$name.غرة" --عاري بدء.تجميع معالج.تجميع) > "$OUT/$name.build" 2>&1 ||
+    DIAG_ORDER=file "$ROOT/tools/build_os.sh" "$OUT/os" "$name.غرة" > "$OUT/$name.build" 2>&1 ||
         { echo "  $name: build failed"; sed 's/^/    /' "$OUT/$name.build" | head -5; ok=0; }
     if [ $ok = 1 ]; then
         timeout 30 "$QEMU" -machine virt -bios none -m 128M -nographic -monitor none \

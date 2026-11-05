@@ -63,6 +63,6 @@
 - [x] Stage 1: bare-metal link layout (`--عاري`), `متطاير` (decision 41), our own start code with no firmware, UART driver and power-off device in غرة, `مرحبا من نظام غرة` on QEMU, language stops on the UART, `make os`
 - [x] Stage 2: CSR and privileged instructions in `مجمع` (compared with GNU as), our machine-mode layer in غرة (protection, delegation, timer), entry into supervisor mode, trap entry/exit in assembly with the handlers in غرة, timer ticks, exceptions reported in Arabic
 - [x] Stage 3: physical page allocator, Sv39 paging with the kernel mapped by permission, linker-defined `_نهاية` / `_بداية_البيانات`, page-fault test
-- [ ] Stage 4: user mode, system calls (`نظام`), processes, scheduler
+- [x] Stage 4: user mode, processes with their own page tables, round-robin preemptive scheduler, system calls (`نظام`: اكتب، اخرج، انتظر، تخل، رقمي، شغل), programs embedded with `.تضمين`, a user exception ends only its process (docs/spec-os.md)
 - [ ] Stage 5: virtio-blk driver, a simple file system
 - [ ] Stage 6: our executable format and its loader in the kernel, a shell with Arabic commands

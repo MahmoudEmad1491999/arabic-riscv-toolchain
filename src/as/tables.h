@@ -81,7 +81,8 @@ typedef enum {
     DIR_DWORD,       /* .كلمة_مزدوجة */
     DIR_STRING,      /* .سلسلة */
     DIR_ZERO,        /* .فراغ */
-    DIR_EQU          /* .ثابت */
+    DIR_EQU,         /* .ثابت */
+    DIR_INCBIN       /* .تضمين "ملف": the file's bytes (A70) */
 } DirKind;
 
 DirKind find_directive(const uint8_t *name, size_t len);

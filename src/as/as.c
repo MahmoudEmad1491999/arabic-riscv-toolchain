@@ -1135,6 +1135,57 @@ static int dir_string(Assembler *as, const Token *head)
     }
 }
 
+void as_set_source(Assembler *as, const char *path)
+{
+    const char *slash = strrchr(path, '/');
+    char *dir;
+    size_t n = slash ? (size_t)(slash - path) : 1;
+    dir = arena_alloc(as->arena, n + 1);
+    if (slash) {
+        memcpy(dir, path, n);
+    } else {
+        dir[0] = '.';
+    }
+    dir[n] = 0;
+    as->src_dir = dir;
+}
+
+/* .تضمين "ملف": appends the bytes of a file (GNU .incbin). The path is
+ * relative to the assembly file's directory unless it starts with /. */
+static int dir_incbin(Assembler *as, const Token *head)
+{
+    Token *t = tok(as);
+    RtBuf file;
+    char *path;
+    size_t dl, i;
+    if (in_bss_error(as, head) != 0) {
+        return -1;
+    }
+    if (t->kind != T_STRING) {
+        return error_tok(t, D_EXPECTED_STRING);
+    }
+    for (i = 0; i < t->str_len; i++) {
+        if (t->str[i] == 0) {
+            return error_tok(t, D_INCLUDE_FAILED);
+        }
+    }
+    dl = (t->str_len > 0 && t->str[0] == '/') || as->src_dir == NULL ? 0 : strlen(as->src_dir);
+    path = arena_alloc(as->arena, dl + t->str_len + 2);
+    if (dl) {
+        memcpy(path, as->src_dir, dl);
+        path[dl++] = '/';
+    }
+    memcpy(path + dl, t->str, t->str_len);
+    path[dl + t->str_len] = 0;
+    if (rt_read_file(path, &file) != 0) {
+        return error_tok(t, D_INCLUDE_FAILED);
+    }
+    buf_bytes(&cur_sec(as)->data, file.data, file.len);
+    rt_free(file.data);
+    advance(as);
+    return 0;
+}
+
 /* Code padding exactly as GNU as does it: a zero byte up to an even
  * offset, then one 2-byte c.nop (0x0001) if needed, then 4-byte nops. */
 static void pad_text(Section *s, uint64_t pad)
@@ -1306,6 +1357,8 @@ static int directive(Assembler *as)
         return dir_zero(as, head);
     case DIR_EQU:
         return dir_equ(as);
+    case DIR_INCBIN:
+        return dir_incbin(as, head);
     }
     return error_name(head, D_UNKNOWN_INSN);
 }
