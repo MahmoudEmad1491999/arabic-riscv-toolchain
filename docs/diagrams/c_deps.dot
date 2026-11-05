@@ -1,0 +1,20 @@
+digraph c_deps {
+  rankdir=TB; compound=true; node [shape=box, style="rounded,filled", fontname="DejaVu Sans", fontsize=11]; edge [color="#555555", fontname="DejaVu Sans", fontsize=10];
+  node [fillcolor="#fdf1dc"];
+  cc [label="src/cc  →  build/مترجم\nlex · parse · check · gen · types · iface · tools · main"];
+  as [label="src/as  →  build/مجمع\nlexer · tables · as.c · main"];
+  ld [label="src/ld  →  build/رابط\nld.c · main"];
+  node [fillcolor="#e3f2e1"];
+  objt [label="src/obj  →  build/عارض"]; libt [label="src/lib  →  build/محزم"]; fst [label="src/fs  →  build/مهيئ"];
+  subgraph cluster_common { label="src/common: compiled into every tool"; labelloc=b; style="rounded,dashed"; fontname="DejaVu Sans";
+    node [fillcolor="#e8eef7"];
+    diag [label="diag\nArabic messages"]; obj [label="obj\nour file formats"]; elf [label="elf.h"]; buf [label="buf"];
+    number [label="number\nfile-order digits"]; utf8 [label="utf8"]; chars [label="chars"]; rt [label="rt\nthe only OS access"];
+    diag -> number; diag -> rt; obj -> number; obj -> utf8; number -> chars; buf -> rt;
+  }
+  cc -> as [label=" assembles in-process", style=bold, color="#b5651d"];
+  cc -> ld [label=" links in-process", style=bold, color="#b5651d"];
+  as -> diag [lhead=cluster_common]; ld -> obj [lhead=cluster_common];
+  objt -> obj [lhead=cluster_common]; libt -> obj [lhead=cluster_common]; fst -> buf [lhead=cluster_common];
+  {rank=same; as; ld; objt; libt; fst}
+}

@@ -1,0 +1,23 @@
+digraph os_imports {
+  rankdir=TB; node [shape=box, style="rounded,filled", fontname="DejaVu Sans", fontsize=11]; edge [color="#555555"];
+  nawa [label="نواة.غرة\n(root module)", fillcolor="#f7d9d9"];
+  subgraph cluster_k { label="مشرف/  (kernel services)"; style="rounded,dashed"; fontname="DejaVu Sans"; node [fillcolor="#fdf1dc"];
+    fikhakh [label="فخاخ\ntraps, system calls"]; amaliyat [label="عمليات\nprocesses, scheduler"]; muhammil [label="محمل\nloader"]; milafat [label="ملفات\nfile system"]; }
+  subgraph cluster_m { label="ذاكرة/"; style="rounded,dashed"; fontname="DejaVu Sans"; node [fillcolor="#e8eef7"];
+    tarjama [label="ترجمة\nSv39 page tables"]; safahat [label="صفحات\npage allocator"]; }
+  subgraph cluster_d { label="جهاز/  (drivers)"; style="rounded,dashed"; fontname="DejaVu Sans"; node [fillcolor="#e3f2e1"];
+    qurs [label="قرص\nvirtio-blk"]; manfath [label="منفذ_تسلسلي\nUART"]; muaqqit [label="مؤقت\ntimer"]; iqaf [label="إيقاف\nshutdown"]; }
+  ala [label="آلة\nmachine mode", fillcolor="#efe3f5"];
+  tawaqquf [label="أساس/توقف\npanic", fillcolor="#efe3f5"];
+  muaalij [label="معالج.غرة + معالج.تجميع\nCSR accessors", fillcolor="#eeeeee"];
+  bad [label="بدء.تجميع\nentry, trap entry, context switch", fillcolor="#eeeeee"];
+  nawa -> ala; nawa -> fikhakh; nawa -> amaliyat; nawa -> milafat; nawa -> tawaqquf;
+  fikhakh -> amaliyat; fikhakh -> tarjama; fikhakh -> milafat; fikhakh -> manfath;
+  amaliyat -> muhammil; amaliyat -> milafat; amaliyat -> tarjama; amaliyat -> safahat;
+  muhammil -> milafat; muhammil -> tarjama; muhammil -> safahat;
+  milafat -> qurs; milafat -> safahat; qurs -> safahat;
+  tarjama -> safahat; tarjama -> manfath;
+  ala -> muaqqit; ala -> manfath; ala -> iqaf; tawaqquf -> manfath; tawaqquf -> iqaf;
+  ala -> muaalij; safahat -> muaalij; tarjama -> muaalij; amaliyat -> muaalij; fikhakh -> muaalij;
+  bad -> nawa [label="calls the kernel\nentry", style=dashed];
+}

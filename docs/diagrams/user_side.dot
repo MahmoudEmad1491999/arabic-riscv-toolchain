@@ -1,0 +1,12 @@
+digraph user_side {
+  rankdir=TB; node [shape=box, style="rounded,filled", fontname="DejaVu Sans", fontsize=11];
+  progs [label="folder برامج\nأول · بوابة · عداد · دوار · خاطئ", fillcolor="#fdf1dc"];
+  tiba [label="طباعة.غرة\nprinting", fillcolor="#e3f2e1"];
+  nizam [label="نظام.غرة\n_نظام_* imports", fillcolor="#e3f2e1"];
+  rtu [label="runtime: تشغيل.تجميع\nentry _بداية", fillcolor="#e3f2e1"];
+  exe [label="executable X\nflag bit 0, in برامج/بناء", fillcolor="#eeeeee"];
+  disk [label="بناء/قرص.صورة\nmade by مهيئ\n+ the files in ملفات", fillcolor="#eeeeee"];
+  kern [label="kernel loader محمل reads it\nbinds _نظام_* to the system page", fillcolor="#f7d9d9"];
+  progs -> tiba -> nizam; progs -> nizam; progs -> exe; rtu -> exe; nizam -> exe [label="left unresolved"];
+  exe -> disk -> kern;
+}

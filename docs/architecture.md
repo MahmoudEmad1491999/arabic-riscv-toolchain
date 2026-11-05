@@ -1,6 +1,6 @@
 # Architecture: the toolchain and the operating system
 
-This document describes how everything is built: the tool pipeline, each tool's modules, the data structures and algorithms, our object formats, the compiler, and the operating system. The diagrams are Graphviz sources in [diagrams/](diagrams/) (`.dot`), rendered to SVG (for these pages) and PNG (for slides and video) next to them. To regenerate all of them: `make diagrams` (`tools/render_diagrams.py`, which also keeps mixed Arabic/English labels reading left to right).
+This document describes how everything is built (for a file-by-file tour of the repository, see [repo-map.md](repo-map.md)): the tool pipeline, each tool's modules, the data structures and algorithms, our object formats, the compiler, and the operating system. The diagrams are Graphviz sources in [diagrams/](diagrams/) (`.dot`), rendered to SVG (for these pages) and PNG (for slides and video) next to them. To regenerate all of them: `make diagrams` (`tools/render_diagrams.py`, which also keeps mixed Arabic/English labels reading left to right).
 
 | Diagram | Shows |
 |---|---|
@@ -13,6 +13,9 @@ This document describes how everything is built: the tool pipeline, each tool's 
 | [os_flow](diagrams/os_flow.svg) | boot, a trap from user mode, the context switch |
 | [os_memory](diagrams/os_memory.svg) | physical memory and a process's address space |
 | [docs_pipeline](diagrams/docs_pipeline.svg) | `make docs`: Markdown to PDF with Arabic as in the editor |
+| [c_deps](diagrams/c_deps.svg) | which C sources depend on which (see [repo-map.md](repo-map.md)) |
+| [os_imports](diagrams/os_imports.svg) | which kernel module imports which |
+| [user_side](diagrams/user_side.svg) | a user program: library, executable, disk, loader |
 
 ## 1. Pipeline
 
