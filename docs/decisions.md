@@ -24,4 +24,7 @@ Decisions made by the project owner. Newest last.
 17. Memory is managed manually, like C. Use-after-free and dangling pointers are the documented undefined behaviour.
 18. Brackets are not "mirrored": each glyph simply has its own meaning. In file order `)` `}` `]` open and `(` `{` `[` close.
 19. Every statement ends with the Arabic semicolon `؛`.
-20. Type names: `صحيح` + width (signed), `طبيعي` + width (unsigned), `منطقي`, `حرف` (one Unicode code point). Whether `حجم` and `بايت` exist is still open.
+20. Type names: `صحيح` + width (signed), `طبيعي` + width (unsigned), `منطقي`, `حرف` (one Unicode code point), `حجم` (sizes and indexes; its own type, 64-bit on RV64, 32-bit on RV32). There is no `بايت`: bytes are `طبيعي٨`.
+21. Comparison glyphs carry their on-screen meaning, like brackets: in file order `أ > ب` means "أ is less than ب" and `أ < ب` means "أ is greater than ب" (`>=` / `<=` likewise).
+22. Conditionals: `إذا`، `وإلا إذا`، `وإلا` (`وإلا إذا` is `وإلا` followed by an `إذا` statement; no extra keyword).
+23. Logical operators are words: `و`، `أو` (short-circuit), `ليس`. Their operands must be `منطقي`.
