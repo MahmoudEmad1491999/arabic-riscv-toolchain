@@ -14,12 +14,12 @@ Encoding: UTF-8. The lexer decodes to code points; columns in diagnostics count 
 
 ### Numbers
 - Digits: Arabic-Indic U+0660–U+0669 only. ASCII 0-9 are rejected (error). Persian digits U+06F0–U+06F9 also rejected unless the user decides otherwise.
-- A number run is stored LEAST significant digit first. The user types 1234 as ٤ then ٣ then ٢ then ١, so the file contains ٤٣٢١ and its value is 1234. On the user's screen it reads 1234.
+- A number run is stored LEAST significant digit first. The user types 1234 as ٤ then ٣ then ٢ then ١, so the file contains <samp>٤٣٢١</samp> (storage order) and its value is 1234. On the user's screen it reads 1234: `٤٣٢١`.
 - A number token always starts (in file order) with an Arabic-Indic digit. This keeps it distinct from identifiers.
 - Base markers come FIRST in file order (they show on screen at the right end, like an Intel `FFh` suffix):
-  - `٠س` then hex digits, least significant first. Hex digits: ٠–٩ plus أ=10 ب=11 ج=12 د=13 ه=14 و=15 (abjad order; ه is U+0647, أ is U+0623).
-    Example: 0x1A is file ٠ س أ ١ ; 0xFF is file ٠ س و و.
-  - `٠ث` then binary digits, least significant first. 0b101 is file ٠ ث ١ ٠ ١.
+  - `٠س` then hex digits, least significant first. Hex digits: `٠`…`٩`, then `أ` = 10, `ب` = 11, `ج` = 12, `د` = 13, `ه` = 14, `و` = 15 (abjad order; `ه` is U+0647, `أ` is U+0623).
+    Example: 0x1A is the file characters <samp>٠سأ١</samp> (editor: `٠سأ١`); 0xFF is <samp>٠سوو</samp> (editor: `٠سوو`).
+  - `٠ث` then binary digits, least significant first. 0b101 is <samp>٠ث١٠١</samp> (editor: `٠ث١٠١`).
   - Only ٠ followed by س or ث is a marker; otherwise ٠ is an ordinary digit.
 - Digit grouping: Arabic thousands separator ٬ (U+066C) allowed between digits, ignored for the value.
 - Lexer method: collect the whole number run, then interpret it least-significant-first (or reverse it and parse normally). One shared helper formats numbers back into file order; every tool that emits source (compiler codegen, listings, disassembly) MUST use it.
@@ -32,7 +32,7 @@ Brackets are allowed and used for grouping in expressions. Because the terminal 
 - Arabic letters, `_`, and Arabic-Indic digits (not as first character).
 - Reject in identifiers: tatweel ـ U+0640, tashkeel (diacritics, U+064B–U+065F, U+0670), Arabic presentation forms (U+FB50–U+FDFF, U+FE70–U+FEFF).
 - No normalisation: أ إ آ ا, ى/ي, ة/ه are distinct letters.
-- Digits inside user identifiers are plain characters (identity = byte equality, no reversal). Only where a digit run has a numeric meaning (register numbers, local labels) is it read least-significant-first. Example: to see سجل٣١ on screen the user types سجل then ١ then ٣; the file holds سجل١٣ and it means register 31.
+- Digits inside user identifiers are plain characters (identity = byte equality, no reversal). Only where a digit run has a numeric meaning (register numbers, local labels) is it read least-significant-first. Example: for register 31 the user types سجل then ١ then ٣; the file holds <samp>سجل١٣</samp> (storage order), which the editor shows as `سجل١٣`.
 
 ### Strings and characters
 - Strings: `"..."`, stored exactly as typed (including any Latin text; no reordering).

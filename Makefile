@@ -17,7 +17,7 @@ LIB_SRC    := src/lib/main.c
 LIB_BIN    := $(BUILD)/محزم
 OBJ_BIN    := $(BUILD)/عارض
 
-.PHONY: all test unit oracle asm link cc objfmt build-mode os fuzz spec spec-check clean
+.PHONY: all docs test unit oracle asm link cc objfmt build-mode os fuzz spec spec-check clean
 
 all: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(OBJ_BIN) $(LIB_BIN) $(BUILD)/test_common
 
@@ -76,6 +76,12 @@ build-mode: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(LIB_BIN)
 # The operating system (os/): bare-metal kernels on qemu-system-riscv64.
 os: $(AS_BIN) $(LD_BIN) $(CC_BIN)
 	./tools/run_os_tests.sh
+
+# The documentation as PDF, Arabic shown as in the editor (decision 48):
+# build/docs/*.pdf. Needs pandoc, weasyprint and arabic-reshaper.
+docs:
+	python3 tools/docs_pdf.py --self-test
+	python3 tools/docs_pdf.py $(BUILD)/docs $(filter-out docs/spec-language.src.md,$(wildcard docs/*.md))
 
 # Random programs: ours vs GNU as and GNU ld (slow; not part of `make test`).
 fuzz: $(AS_BIN) $(LD_BIN)
