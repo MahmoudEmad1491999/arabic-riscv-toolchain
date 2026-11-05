@@ -286,6 +286,81 @@ static void load_value(Gen *g, const Type *t)
     }
 }
 
+/* Byte-by-byte access for locations inside packed structures, which may
+ * be misaligned (decision 30, assumption A51). */
+static void load_bytes(Gen *g, const char *dst, const char *base, int64_t off, uint64_t n)
+{
+    uint64_t i = n;
+    li(g, dst, 0);
+    while (i > 0) {
+        i--;
+        mem_op(g, "حمل_بايت_بلا_إشارة", "مؤقت١", base, off + (int64_t)i);
+        ins_imm(g, "رفع_فوري", dst, dst, 8);
+        ins(g, "أو_منطقي", dst, dst, "مؤقت١");
+    }
+}
+
+static void store_bytes(Gen *g, const char *src, const char *base, int64_t off, uint64_t n)
+{
+    uint64_t i;
+    for (i = 0; i < n; i++) {
+        if (i == 0) {
+            mem_op(g, "خزن_بايت", src, base, off);
+        } else {
+            ins_imm(g, "خفض_منطقي_فوري", "مؤقت١", src, (int64_t)(8 * i));
+            mem_op(g, "خزن_بايت", "مؤقت١", base, off + (int64_t)i);
+        }
+    }
+}
+
+/* the value at the (possibly misaligned) address in وسيط٠ */
+static void load_value_unaligned(Gen *g, const Type *t)
+{
+    if (t->kind == T_SLICE) {
+        load_bytes(g, "مؤقت٢", "وسيط٠", 8, 8);
+        load_bytes(g, "مؤقت٣", "وسيط٠", 0, 8);
+        ins(g, "نسخ", "وسيط٠", "مؤقت٣", NULL);
+        ins(g, "نسخ", "وسيط١", "مؤقت٢", NULL);
+    } else if (!ty_is_aggregate(t)) {
+        load_bytes(g, "مؤقت٣", "وسيط٠", 0, ty_size_of(scalar_repr(t)));
+        ins(g, "نسخ", "وسيط٠", "مؤقت٣", NULL);
+        normalize(g, "وسيط٠", t);
+    }
+}
+
+/* store the value in وسيط٠[/وسيط١] at the (possibly misaligned) address in addr */
+static void store_value_unaligned(Gen *g, const char *addr, const Type *t)
+{
+    if (t->kind == T_SLICE) {
+        store_bytes(g, "وسيط٠", addr, 0, 8);
+        store_bytes(g, "وسيط١", addr, 8, 8);
+    } else if (ty_is_aggregate(t)) {
+        store_value(g, addr, t); /* byte copy anyway */
+    } else {
+        store_bytes(g, "وسيط٠", addr, 0, ty_size_of(scalar_repr(t)));
+    }
+}
+
+/* same rule as the checker: reached through a field of a packed structure */
+static int in_packed(const Expr *e)
+{
+    switch (e->kind) {
+    case E_MEMBER:
+        if (e->ref != REF_FIELD) return 0;
+        return e->a->type->decl->packed || in_packed(e->a);
+    case E_INDEX: return e->a->type->kind == T_ARRAY && in_packed(e->a);
+    case E_BUILTIN: return e->tok.kind == K_INDEX_CHECKED && e->args[0]->type->kind == T_ARRAY &&
+                           in_packed(e->args[0]);
+    default: return 0;
+    }
+}
+
+static void load_lvalue(Gen *g, const Expr *e)
+{
+    if (in_packed(e)) load_value_unaligned(g, e->type);
+    else load_value(g, e->type);
+}
+
 /* ------------------------------------------------------------------ */
 /* Expressions                                                         */
 
@@ -406,7 +481,36 @@ static const char *const areg[8] = {
     "وسيط٠", "وسيط١", "وسيط٢", "وسيط٣", "وسيط٤", "وسيط٥", "وسيط٦", "وسيط٧"
 };
 
-/* After a call or on entry: a value of type t arrived in registers. */
+/* Where each word of each argument travels (RISC-V LP64 ABI):
+ * registers وسيط٠…وسيط٧ in order, then the stack in 8-byte words. A
+ * two-word argument with only وسيط٧ left is split: first word in وسيط٧,
+ * second word on the stack. */
+typedef struct {
+    int reg[2];       /* register number, or -1 */
+    int stack[2];     /* byte offset in the outgoing stack area, or -1 */
+    int words;
+} ArgPlace;
+
+static int plan_args(Type **params, size_t n, int hidden, ArgPlace *out)
+{
+    int r = hidden ? 1 : 0, st = 0;
+    size_t i;
+    for (i = 0; i < n; i++) {
+        int w = abi_words(params[i]), k;
+        out[i].words = w;
+        for (k = 0; k < 2; k++) { out[i].reg[k] = -1; out[i].stack[k] = -1; }
+        for (k = 0; k < w; k++) {
+            if (r < 8) {
+                out[i].reg[k] = r++;
+            } else {
+                out[i].stack[k] = st;
+                st += 8;
+            }
+        }
+    }
+    return (st + 15) / 16 * 16;
+}
+
 static void gen_call(Gen *g, Expr *e)
 {
     Type *ft = e->a->type;
@@ -414,9 +518,10 @@ static void gen_call(Gen *g, Expr *e)
     int direct = (e->a->kind == E_NAME || e->a->kind == E_MEMBER) && e->a->ref == REF_FUNC;
     int hidden = rt != NULL && ty_is_aggregate(rt) && ty_size_of(rt) > 16;
     int32_t ret_slot = 0;
-    size_t i;
-    int reg = hidden ? 1 : 0;
-    int first_reg[64];
+    size_t i, n = e->nargs;
+    ArgPlace *place = arena_alloc(g->prog->arena, (n + 1) * sizeof *place);
+    int area = plan_args(ft->params, n, hidden, place);
+    int64_t temps;
 
     if (!direct) {
         gen_expr(g, e->a);
@@ -425,16 +530,17 @@ static void gen_call(Gen *g, Expr *e)
     if (rt != NULL && ty_is_aggregate(rt)) {
         ret_slot = alloc_slot(g, ty_size_of(rt) < 16 ? 16 : ty_size_of(rt), ty_align_of(rt));
     }
-    for (i = 0; i < e->nargs; i++) {
+    /* evaluate every argument in reading order; each occupies one 16-byte
+     * slot: one word at +0, or two words at +0 and +8 */
+    for (i = 0; i < n; i++) {
         Type *pt = ft->params[i];
-        first_reg[i] = reg;
         gen_expr(g, e->args[i]);
         if (pt->kind == T_SLICE) {
             push2(g, "وسيط٠", "وسيط١");
         } else if (ty_is_aggregate(pt)) {
             uint64_t size = ty_size_of(pt);
             int32_t tmp = alloc_slot(g, size < 16 ? 16 : size, ty_align_of(pt));
-            /* copy into a private slot (callee may modify it) */
+            /* copy into a private slot (the callee may modify it) */
             ins(g, "نسخ", "وسيط١", "وسيط٠", NULL);
             add_imm(g, "وسيط٠", "محفوظ٠", tmp);
             if (size < 16) {
@@ -453,32 +559,36 @@ static void gen_call(Gen *g, Expr *e)
         } else {
             push(g, "وسيط٠");
         }
-        reg += abi_words(pt);
     }
-    /* pop into the argument registers, last argument first */
-    i = e->nargs;
-    while (i > 0) {
-        Type *pt;
-        int r;
-        i--;
-        pt = ft->params[i];
-        r = first_reg[i];
-        if (abi_words(pt) == 2) {
-            pop2(g, areg[r], areg[r + 1]);
-        } else {
-            pop(g, areg[r]);
-            if (is_u32(pt)) ins_imm(g, "جمع_فوري_كلمة", areg[r], areg[r], 0); /* ABI: sign-extend */
+    /* outgoing stack area below the temporaries; argument i's slot is at
+     * area + 16 * (n - 1 - i) from the new stack pointer */
+    if (area) add_imm(g, "مؤشر_المكدس", "مؤشر_المكدس", -area);
+    for (i = 0; i < n; i++) {
+        int k;
+        int64_t slot = area + 16 * (int64_t)(n - 1 - i);
+        for (k = 0; k < place[i].words; k++) {
+            const char *dst = place[i].reg[k] >= 0 ? areg[place[i].reg[k]] : "مؤقت٠";
+            mem_op(g, "حمل_كلمة_مزدوجة", dst, "مؤشر_المكدس", slot + 8 * k);
+            if (place[i].words == 1 && is_u32(ft->params[i])) {
+                ins_imm(g, "جمع_فوري_كلمة", dst, dst, 0); /* ABI: 32-bit values sign-extended */
+            }
+            if (place[i].reg[k] < 0) {
+                mem_op(g, "خزن_كلمة_مزدوجة", "مؤقت٠", "مؤشر_المكدس", place[i].stack[k]);
+            }
         }
     }
     if (hidden) add_imm(g, "وسيط٠", "محفوظ٠", ret_slot);
+    temps = 16 * (int64_t)n;
     if (direct) {
         emit(g, "    استدعاء ");
         emit_sym(g, e->a->decl);
         emit(g, "\n");
     } else {
-        pop(g, "مؤقت٠");
+        mem_op(g, "حمل_كلمة_مزدوجة", "مؤقت٠", "مؤشر_المكدس", area + temps);
         ins(g, "قفز_وربط_بسجل", "عنوان_العودة", "مؤقت٠", NULL);
+        temps += 16;
     }
+    add_imm(g, "مؤشر_المكدس", "مؤشر_المكدس", area + temps);
     if (rt == NULL) return;
     if (ty_is_aggregate(rt)) {
         if (!hidden) {
@@ -729,7 +839,8 @@ static void gen_aggregate_literal(Gen *g, Expr *e)
             }
             gen_expr(g, e->args[i]);
             add_imm(g, "مؤقت٢", "محفوظ٠", slot + (int64_t)d->fields[f].offset);
-            store_value(g, "مؤقت٢", d->fields[f].type);
+            if (d->packed) store_value_unaligned(g, "مؤقت٢", d->fields[f].type);
+            else store_value(g, "مؤقت٢", d->fields[f].type);
         }
     } else if (e->kind == E_ARRAY_LIT) {
         uint64_t es = ty_size_of(t->elem);
@@ -823,7 +934,7 @@ static void gen_expr(Gen *g, Expr *e)
             ins(g, "نسخ", "وسيط٠", "وسيط١", NULL);
         } else if (e->ref == REF_FIELD) {
             gen_addr(g, e);
-            load_value(g, e->type);
+            load_lvalue(g, e);
         } else {
             gen_decl_ref(g, e);
         }
@@ -831,7 +942,7 @@ static void gen_expr(Gen *g, Expr *e)
     case E_INDEX:
     case E_DEREF:
         gen_addr(g, e);
-        load_value(g, e->type);
+        load_lvalue(g, e);
         return;
     case E_ADDR:
         gen_addr(g, e->a);
@@ -896,7 +1007,7 @@ static void gen_expr(Gen *g, Expr *e)
             return;
         case K_INDEX_CHECKED:
             gen_element_addr(g, e->args[0], e->args[1], 1);
-            load_value(g, e->type);
+            load_lvalue(g, e);
             return;
         case K_SLICE_CHECKED:
             gen_slice(g, e->args[0], e->args[1], e->args[2], 1);
@@ -997,7 +1108,8 @@ static void gen_stmt(Gen *g, Stmt *s)
         push(g, "وسيط٠");
         gen_expr(g, s->e2);
         pop(g, "مؤقت٢");
-        store_value(g, "مؤقت٢", s->e1->type);
+        if (in_packed(s->e1)) store_value_unaligned(g, "مؤقت٢", s->e1->type);
+        else store_value(g, "مؤقت٢", s->e1->type);
         return;
     case S_EXPR:
         gen_expr(g, s->e1);
@@ -1184,7 +1296,6 @@ static void gen_function(Gen *g, Decl *d)
 {
     Buf *saved_out = g->out;
     size_t i;
-    int reg;
     int hidden = d->ret != NULL && ty_is_aggregate(d->ret) && ty_size_of(d->ret) > 16;
 
     g->fn = d;
@@ -1194,54 +1305,55 @@ static void gen_function(Gen *g, Decl *d)
     buf_init(&g->text);
     g->out = &g->text;
 
-    /* parameters arrive in registers; store them in their slots */
-    reg = 0;
-    if (hidden) {
-        g->hidden_ret_slot = alloc_slot(g, 8, 8);
-        mem_op(g, "خزن_كلمة_مزدوجة", "وسيط٠", "محفوظ٠", g->hidden_ret_slot);
-        reg = 1;
-    }
-    for (i = 0; i < d->nparams; i++) {
-        Local *p = d->params[i];
-        Type *t = p->type;
-        int32_t off = local_slot(g, p);
-        if (t->kind == T_SLICE) {
-            mem_op(g, "خزن_كلمة_مزدوجة", areg[reg], "محفوظ٠", off);
-            mem_op(g, "خزن_كلمة_مزدوجة", areg[reg + 1], "محفوظ٠", off + 8);
-        } else if (ty_is_aggregate(t)) {
-            uint64_t size = ty_size_of(t);
-            if (size <= 16) {
-                int32_t tmp = alloc_slot(g, 16, 8);
-                mem_op(g, "خزن_كلمة_مزدوجة", areg[reg], "محفوظ٠", tmp);
-                if (size > 8) mem_op(g, "خزن_كلمة_مزدوجة", areg[reg + 1], "محفوظ٠", tmp + 8);
-                push2(g, "وسيط٠", "وسيط١"); /* keep later argument registers safe */
-                push2(g, "وسيط٢", "وسيط٣");
-                push2(g, "وسيط٤", "وسيط٥");
-                push2(g, "وسيط٦", "وسيط٧");
-                add_imm(g, "وسيط٠", "محفوظ٠", off);
-                add_imm(g, "وسيط١", "محفوظ٠", tmp);
-                copy_mem(g, size);
-                pop2(g, "وسيط٦", "وسيط٧");
-                pop2(g, "وسيط٤", "وسيط٥");
-                pop2(g, "وسيط٢", "وسيط٣");
-                pop2(g, "وسيط٠", "وسيط١");
-            } else {
-                push2(g, "وسيط٠", "وسيط١");
-                push2(g, "وسيط٢", "وسيط٣");
-                push2(g, "وسيط٤", "وسيط٥");
-                push2(g, "وسيط٦", "وسيط٧");
-                ins(g, "نسخ", "وسيط١", areg[reg], NULL);
-                add_imm(g, "وسيط٠", "محفوظ٠", off);
-                copy_mem(g, size);
-                pop2(g, "وسيط٦", "وسيط٧");
-                pop2(g, "وسيط٤", "وسيط٥");
-                pop2(g, "وسيط٢", "وسيط٣");
-                pop2(g, "وسيط٠", "وسيط١");
-            }
-        } else {
-            store_scalar(g, areg[reg], "محفوظ٠", off, t);
+    /* save the eight argument registers first, then build each parameter
+     * from its words (saved registers, or the caller's stack area at the
+     * frame pointer) */
+    {
+        int32_t saved = alloc_slot(g, 64, 8);
+        ArgPlace *place = arena_alloc(g->prog->arena, (d->nparams + 1) * sizeof *place);
+        Type **pts = arena_alloc(g->prog->arena, (d->nparams + 1) * sizeof *pts);
+        int r;
+        for (r = 0; r < 8; r++) mem_op(g, "خزن_كلمة_مزدوجة", areg[r], "محفوظ٠", saved + 8 * r);
+        if (hidden) {
+            g->hidden_ret_slot = alloc_slot(g, 8, 8);
+            mem_op(g, "حمل_كلمة_مزدوجة", "مؤقت٠", "محفوظ٠", saved);
+            mem_op(g, "خزن_كلمة_مزدوجة", "مؤقت٠", "محفوظ٠", g->hidden_ret_slot);
         }
-        reg += abi_words(t);
+        for (i = 0; i < d->nparams; i++) pts[i] = d->params[i]->type;
+        plan_args(pts, d->nparams, hidden, place);
+        for (i = 0; i < d->nparams; i++) {
+            Local *p = d->params[i];
+            Type *t = p->type;
+            int32_t off = local_slot(g, p);
+            int32_t words = alloc_slot(g, 16, 8);
+            int k;
+            for (k = 0; k < place[i].words; k++) {
+                if (place[i].reg[k] >= 0) {
+                    mem_op(g, "حمل_كلمة_مزدوجة", "مؤقت٠", "محفوظ٠", saved + 8 * place[i].reg[k]);
+                } else {
+                    mem_op(g, "حمل_كلمة_مزدوجة", "مؤقت٠", "محفوظ٠", place[i].stack[k]);
+                }
+                mem_op(g, "خزن_كلمة_مزدوجة", "مؤقت٠", "محفوظ٠", words + 8 * k);
+            }
+            if (t->kind == T_SLICE) {
+                add_imm(g, "وسيط١", "محفوظ٠", words);
+                add_imm(g, "وسيط٠", "محفوظ٠", off);
+                copy_mem(g, 16);
+            } else if (ty_is_aggregate(t)) {
+                uint64_t size = ty_size_of(t);
+                if (size <= 16) {
+                    add_imm(g, "وسيط١", "محفوظ٠", words);
+                } else {
+                    mem_op(g, "حمل_كلمة_مزدوجة", "وسيط١", "محفوظ٠", words); /* the caller's copy */
+                }
+                add_imm(g, "وسيط٠", "محفوظ٠", off);
+                copy_mem(g, size);
+            } else {
+                mem_op(g, "حمل_كلمة_مزدوجة", "مؤقت٠", "محفوظ٠", words);
+                if (is_u32(t)) normalize(g, "مؤقت٠", t); /* ABI sign-extended it */
+                store_scalar(g, "مؤقت٠", "محفوظ٠", off, t);
+            }
+        }
     }
     gen_block(g, d->body);
     emit_label_def(g, g->ret_label);

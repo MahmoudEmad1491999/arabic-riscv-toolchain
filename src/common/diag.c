@@ -125,6 +125,7 @@ static const char *const diag_text[D_COUNT] = {
     [D_CC_STRUCT_LIT_HERE] = "ضع قيمة البنية بين قوسين في هذا الموضع",
     [D_CC_BAD_CHAR] = "قيمة حرف غير صالحة",
     [D_CC_BAD_MODULE_NAME] = "اسم الملف لا يصلح اسما لوحدة:",
+    [D_CC_PACKED_ADDR] = "لا يمكن أخذ عنوان أو شريحة من حقل في بنية مضغوطة، فقد لا يكون محاذى",
 };
 
 static const char *diag_file = "";

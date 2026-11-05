@@ -297,7 +297,6 @@ static int layout_struct(Ctx *c, Decl *d)
     size_t i;
     if (d->state == 2) return 0;
     if (d->state == 1) return err_name(&d->tok, D_CC_RECURSIVE_TYPE, d->name, d->len);
-    if (d->packed) return err(&d->tok, D_CC_NOT_SUPPORTED, "بنية مضغوطة");
     d->state = 1;
     for (i = 0; i < d->nfields; i++) {
         Field *f = &d->fields[i];
@@ -517,6 +516,22 @@ static int is_writable(const Expr *e)
     }
 }
 
+/* Is this location reached through a field of a packed structure, so it
+ * may be misaligned? Such locations can be read and written (the code
+ * generator uses byte accesses) but never pointed into (assumption A51). */
+static int in_packed(const Expr *e)
+{
+    switch (e->kind) {
+    case E_MEMBER:
+        if (e->ref != REF_FIELD) return 0;
+        return e->a->type->decl->packed || in_packed(e->a);
+    case E_INDEX: return e->a->type->kind == T_ARRAY && in_packed(e->a);
+    case E_BUILTIN: return e->tok.kind == K_INDEX_CHECKED && e->args[0]->type->kind == T_ARRAY &&
+                           in_packed(e->args[0]);
+    default: return 0;
+    }
+}
+
 static Type *slice_of(Ctx *c, Type *elem, int readonly)
 {
     Type *t = ty_new(c->prog->arena, T_SLICE);
@@ -704,7 +719,7 @@ static int check_call(Ctx *c, Expr *e)
         words += arg_words(ft->params[i]);
     }
     if (ft->elem != NULL && ty_is_aggregate(ft->elem) && ty_size_of(ft->elem) > 16) words++;
-    if (words > 8) return err(&e->tok, D_CC_TOO_MANY_ARGS, NULL);
+    (void)words; /* beyond eight words the ABI uses the stack (gen.c) */
     e->type = ft->elem ? ft->elem : ty_void;
     return 0;
 }
@@ -730,6 +745,7 @@ static int check_slice_like(Ctx *c, Expr *e, Expr *base, Expr *lo, Expr *hi)
     bt = base->type;
     if (bt->kind != T_ARRAY && bt->kind != T_SLICE) return err(&base->tok, D_CC_NOT_INDEXABLE, NULL);
     if (bt->kind == T_ARRAY && !is_lvalue(base)) return err(&base->tok, D_CC_NOT_LVALUE, NULL);
+    if (bt->kind == T_ARRAY && in_packed(base)) return err(&base->tok, D_CC_PACKED_ADDR, NULL);
     if (check_expr(c, lo, ty_size) != 0 || coerce(c, lo, ty_size) != 0) return -1;
     if (check_expr(c, hi, ty_size) != 0 || coerce(c, hi, ty_size) != 0) return -1;
     if (bt->kind == T_ARRAY && hi->is_const && hi->cval.mag > bt->count) {
@@ -1129,6 +1145,7 @@ static int check_expr(Ctx *c, Expr *e, Type *want)
     case E_ADDR:
         if (check_expr(c, e->a, NULL) != 0) return -1;
         if (!is_lvalue(e->a)) return err(&e->tok, D_CC_NOT_LVALUE, NULL);
+        if (in_packed(e->a)) return err(&e->tok, D_CC_PACKED_ADDR, NULL);
         e->type = ptr_to(c, e->a->type, !is_writable(e->a));
         return 0;
     case E_UNARY:
@@ -1418,6 +1435,7 @@ static int check_stmt(Ctx *c, Stmt *s, int *terminates)
         if (check_expr(c, s->e1, NULL) != 0) return -1;
         seq = s->e1->type;
         if (seq->kind != T_ARRAY && seq->kind != T_SLICE) return err(&s->e1->tok, D_CC_NOT_INDEXABLE, NULL);
+        if (seq->kind == T_ARRAY && in_packed(s->e1)) return err(&s->e1->tok, D_CC_PACKED_ADDR, NULL);
         if (s->local2 != NULL) {
             if (new_local_var(c, s->local2) != 0) return -1;
             if (!ty_equal(s->local2->type, ty_size)) return err(&s->local2->tok, D_CC_TYPE_MISMATCH, "حجم");

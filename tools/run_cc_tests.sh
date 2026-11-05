@@ -3,6 +3,7 @@
 #  1. tests/cc/NAME.غرة: compile (search path lib/), assemble, link with the
 #     runtime, run; check NAME.out (stdout, required) and NAME.code (exit
 #     code, default 0). Subdirectories of tests/cc hold imported modules.
+#     If NAME.c exists it is compiled by GCC and linked in (ABI interop test).
 #  2. tests/cc-errors/NAME.غرة: must fail to compile (exit 1), and stderr in
 #     file order (DIAG_ORDER=file) must contain the text in NAME.err.
 set -u
@@ -11,6 +12,7 @@ CC="$ROOT/build/مترجم"
 AS="$ROOT/build/مجمع"
 LD="$ROOT/build/رابط"
 OUT="$ROOT/build/cc-tests"
+PREFIX=${RISCV_PREFIX:-riscv64-linux-gnu-}
 mkdir -p "$OUT"
 pass=0; fail=0
 report() { if [ "$2" = 1 ]; then pass=$((pass+1)); else echo "FAIL $1"; fail=$((fail+1)); fi; }
@@ -20,9 +22,16 @@ report() { if [ "$2" = 1 ]; then pass=$((pass+1)); else echo "FAIL $1"; fail=$((
 for src in "$ROOT"/tests/cc/*.غرة; do
     name=$(basename "$src" .غرة)
     ok=1
-    if DIAG_ORDER=file "$CC" "$src" "$OUT/$name.تجميع" "$ROOT/lib" 2> "$OUT/$name.cc.stderr" &&
+    extra=""
+    if [ -f "$ROOT/tests/cc/$name.c" ]; then
+        extra="$OUT/$name.c.o"
+        "${PREFIX}gcc" -O1 -march=rv64im -mabi=lp64 -mno-relax -fno-pic -fno-pie -ffreestanding \
+            -fno-stack-protector -fno-asynchronous-unwind-tables -fno-unwind-tables -nostdlib \
+            -c "$ROOT/tests/cc/$name.c" -o "$extra" || ok=0
+    fi
+    if [ $ok = 1 ] && DIAG_ORDER=file "$CC" "$src" "$OUT/$name.تجميع" "$ROOT/lib" 2> "$OUT/$name.cc.stderr" &&
        "$AS" "$OUT/$name.تجميع" "$OUT/$name.o" &&
-       "$LD" "$OUT/$name" "$OUT/$name.o" "$OUT/runtime.o"; then
+       "$LD" "$OUT/$name" "$OUT/$name.o" "$OUT/runtime.o" $extra; then
         qemu-riscv64 "$OUT/$name" > "$OUT/$name.stdout" 2> "$OUT/$name.stderr"
         code=$?
         want=0

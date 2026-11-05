@@ -80,7 +80,7 @@ Booleans: `و`، `أو` (short-circuit), `ليس`; the operands must be booleans
 
 - Fields are laid out in declaration order, each at its natural alignment. The struct's alignment is the largest field alignment.
 - **The compiler never inserts padding silently.** If a field would not be at its alignment, or the total size is not a multiple of the struct's alignment, it is a **compile error** saying how many bytes are missing and where. You then reorder the fields, or add explicit padding fields as in the example above. The layout in memory is exactly what you read in the source: `مقاس)رأس_ملف(` is 4 + 2 + 2 + 8 = 16.
-- `بنية مضغوطة` declares a packed structure: alignment 1, no padding at all, fields may be misaligned. The compiler accesses them byte by byte, which is slower and explicit. Use it for file formats and wire protocols.
+- `بنية مضغوطة` declares a packed structure: alignment 1, no padding at all, fields may be misaligned. The compiler accesses them byte by byte, which is slower and explicit. Use it for file formats and wire protocols. You cannot take the address of a field of a packed structure, slice an array field, or loop over an array field with `لكل`: copy it into a normal variable first (the pointer could be misaligned).
 - A struct value is created with every field named, in any order, and none may be missing: `رأس_ملف} سحر = …، إصدار = ١، حشو = ]٠ مكرر[، حجم_البيانات = ٠ {`.
 - `==` on structures is a compile error. Compare the fields you mean, which avoids comparing padding bytes.
 

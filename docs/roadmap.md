@@ -54,5 +54,5 @@
 - [x] Runtime in our assembly (`lib/runtime`) and the first standard-library module `غرة.نصوص`, written in غرة
 - [x] Tests: programs compiled → assembled → linked by our tools and run under qemu (arithmetic semantics, structures, enumerations, loops, pointers, optionals, modules, run-time stops), 37 compile-error tests, compiler fuzzing under sanitizers
 - [ ] Our own object format (binary + text) with module interfaces; separate compilation; `مترجم` building the executable in one command
-- [ ] `بنية مضغوطة`, calls with more than eight argument words
+- [x] `بنية مضغوطة`, calls with more than eight argument words
 - [ ] More of the standard library (files, memory, strings)

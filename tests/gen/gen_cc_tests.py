@@ -294,6 +294,170 @@ modules_body = f"""استورد اختبار_وحدات.حساب؛
 """
 modules_out = [42, 1001, 2, 1]
 
+# ---------------------------------------------------------------- ABI with C (GCC)
+abi_c = r"""/* C side of the ABI test, compiled by GCC: غرة calls these, and
+ * استدع_غرة calls back into غرة. */
+typedef struct { long a, b, c; } big;          /* 24 bytes: by reference */
+typedef struct { int x, y; } pt;               /* 8 bytes: one register */
+typedef struct { const unsigned char *ptr; unsigned long len; } slice;
+
+long جمع_عشرة(long a, long b, long c, long d, long e, long f, long g, long h, long i, long j)
+{
+    return a + 2 * b + 3 * c + 4 * d + 5 * e + 6 * f + 7 * g + 8 * h + 9 * i + 10 * j;
+}
+
+long مختلط(slice s, pt p, big q, unsigned int u, signed char sc, slice s2, long t1, long t2)
+{
+    return (long)s.len * 1000 + p.x * 100 + p.y * 10 + q.a + q.b + q.c + u + sc +
+           (long)s2.len * 7 + t1 * 11 + t2 * 13;
+}
+
+big اصنع_كبيرة(long v)
+{
+    big r = {v, v * 2, v * 3};
+    return r;
+}
+
+pt بدل(pt p)
+{
+    pt r = {p.y, p.x};
+    return r;
+}
+
+unsigned int زد_ط(unsigned int v)
+{
+    return v + 1;
+}
+
+long مقسوم(long a, long b, long c, long d, long e, long f, long g, slice s)
+{
+    return a + b + c + d + e + f + g + (long)s.len * 100 + s.ptr[0];
+}
+
+extern long مجموع_غرة(long, long, long, long, long, long, long, long, long, long);
+
+long استدع_غرة(void)
+{
+    return مجموع_غرة(10, 9, 8, 7, 6, 5, 4, 3, 2, 1);
+}
+"""
+
+TEN = ["أ", "ب", "ج", "د", "ه", "ز", "ح", "ط", "ي", "ك"]
+ten_params = "، ".join(f"{x}: {s64}" for x in TEN)
+ten_sum = " + ".join(f"{n(i + 1)} * {x}" for i, x in enumerate(TEN))
+ten_args = "، ".join(n(i + 1) for i in range(10))
+seven = "، ".join(f"{x}: {s64}" for x in TEN[:7])
+abi_body = f"""
+بنية كبيرة }}
+    أ: {s64}؛
+    ب: {s64}؛
+    ج: {s64}؛
+{{
+
+بنية نقطة }}
+    س: {s32}؛
+    ص: {s32}؛
+{{
+
+خارجي دالة جمع_عشرة){ten_params}(: {s64}؛
+خارجي دالة مختلط)ش: ][ثابت {u8}، نق: نقطة، ك: كبيرة، ط: {u32}، ص: {s8}، ش٢: ][ثابت {u8}، ذ١: {s64}، ذ٢: {s64}(: {s64}؛
+خارجي دالة اصنع_كبيرة)ق: {s64}(: كبيرة؛
+خارجي دالة بدل)نق: نقطة(: نقطة؛
+خارجي دالة زد_ط)ق: {u32}(: {u32}؛
+خارجي دالة مقسوم){seven}، ش: ][ثابت {u8}(: {s64}؛
+خارجي دالة استدع_غرة)(: {s64}؛
+
+# called from C
+عام خارجي دالة مجموع_غرة){ten_params}(: {s64} }}
+    ارجع {ten_sum}؛
+{{
+
+دالة داخلي_عشرة){ten_params}(: {s64} }}
+    ارجع {ten_sum}؛
+{{
+
+دالة داخلي_مختلط)ش: ][ثابت {u8}، نق: نقطة، ك: كبيرة، ط: {u32}، ص: {s8}، ش٢: ][ثابت {u8}، ذ١: {s64}، ذ٢: {s64}(: {s64} }}
+    ارجع حول_بفحص){s64}، ش.طول( * {n(1000)} + حول){s64}، نق.س( * {n(100)} + حول){s64}، نق.ص( * {n(10)} +
+        ك.أ + ك.ب + ك.ج + حول){s64}، ط( + حول){s64}، ص( + حول_بفحص){s64}، ش٢.طول( * {n(7)} + ذ١ * {n(11)} + ذ٢ * {n(13)}؛
+{{
+
+عام دالة رئيسية)(: {u8} }}
+    اطبع)جمع_عشرة){ten_args}((؛
+    اطبع)مختلط)"abc"، نقطة}} س = {n(4)}، ص = {n(5)} {{، كبيرة}} أ = {n(6)}، ب = {n(7)}، ج = {n(8)} {{، {n(9)}، {n(-2)}، "xy"، {n(3)}، {n(4)}((؛
+    متغير ك: كبيرة = اصنع_كبيرة){n(5)}(؛
+    اطبع)ك.أ(؛
+    اطبع)ك.ب(؛
+    اطبع)ك.ج(؛
+    متغير ن٢: نقطة = بدل)نقطة}} س = {n(1)}، ص = {n(2)} {{(؛
+    اطبع)حول){s64}، ن٢.س( * {n(10)} + حول){s64}، ن٢.ص((؛
+    اطبع)حول){s64}، زد_ط){h(0xFFFFFFFF)}(((؛
+    اطبع)حول){s64}، زد_ط){n(7)}(((؛
+    اطبع)مقسوم){n(1)}، {n(2)}، {n(3)}، {n(4)}، {n(5)}، {n(6)}، {n(7)}، "AB"((؛
+    اطبع)استدع_غرة)((؛
+    اطبع)داخلي_عشرة){ten_args}((؛
+    اطبع)داخلي_مختلط)"abc"، نقطة}} س = {n(4)}، ص = {n(5)} {{، كبيرة}} أ = {n(6)}، ب = {n(7)}، ج = {n(8)} {{، {n(9)}، {n(-2)}، "xy"، {n(3)}، {n(4)}((؛
+    ارجع {n(0)}؛
+{{
+"""
+abi_out = [385, 3577, 5, 10, 15, 21, 0, 8, 293, 220, 385, 3577]
+
+# ---------------------------------------------------------------- packed structures (with GCC)
+packed_c = r"""/* C side of the packed-structure test: the same layout with GCC's packed attribute. */
+struct __attribute__((packed)) hdr {
+    unsigned char magic;
+    unsigned int len;     /* offset 1 */
+    unsigned short flag;  /* offset 5 */
+    long last;            /* offset 7, total 15 bytes */
+};
+
+long قيم_الرأس(struct hdr h)
+{
+    return h.magic + (long)h.len * 10 + h.flag * 100 + h.last * 1000;
+}
+
+long اقرأ_الرأس(const struct hdr *h)
+{
+    return h->magic + (long)h->len * 10 + h->flag * 100 + h->last * 1000;
+}
+
+struct hdr اصنع_رأسا(long v)
+{
+    struct hdr h = {1, (unsigned int)v, 2, -v};
+    return h;
+}
+"""
+
+packed_body = f"""
+بنية مضغوطة رأس }}
+    سحر: {u8}؛
+    طول: {u32}؛
+    علم: {u16}؛
+    أخير: {s64}؛
+{{
+
+خارجي دالة قيم_الرأس)ر: رأس(: {s64}؛
+خارجي دالة اقرأ_الرأس)ر: ^ثابت رأس(: {s64}؛
+خارجي دالة اصنع_رأسا)ق: {s64}(: رأس؛
+
+عام دالة رئيسية)(: {u8} }}
+    متغير ر: رأس = رأس}} سحر = {n(7)}، طول = {n(100000)}، علم = {n(3)}، أخير = {n(-5)} {{؛
+    اطبع)حول_بفحص){s64}، مقاس)رأس(((؛
+    اطبع)قيم_الرأس)ر((؛
+    اطبع)اقرأ_الرأس)@ر((؛
+    ر.طول = ر.طول + {n(1)}؛
+    اطبع)حول){s64}، ر.طول((؛
+    متغير ج: رأس = اصنع_رأسا){n(9)}(؛
+    اطبع)حول){s64}، ج.طول((؛
+    اطبع)ج.أخير(؛
+    متغير م: ]{n(3)}[رأس = ]ر مكرر[؛
+    م]{n(2)}[.علم = {n(400)}؛
+    اطبع)حول){s64}، م]{n(2)}[.علم((؛
+    اطبع)حول){s64}، م]{n(1)}[.علم((؛
+    ارجع {n(0)}؛
+{{
+"""
+packed_out = [15, 995307, 995307, 100001, 9, -9, 400, 3]
+
 # ---------------------------------------------------------------- run-time stops
 stops = {
     "توقف_الفهرس": (f"""استورد غرة.نصوص باسم ن؛
@@ -359,6 +523,8 @@ errors = {
     "حرف_ليس_عددا": (f"دالة فحص)ح: حرف(: {u32} }} ارجع ح؛ {{\n" + M, "نوع غير متوافق"),
     "تعيين_في_تعبير": (f"دالة فحص)( }} {n(1)} + {n(2)}؛ {{\n" + M, "رمز غير متوقع"),
     "وحدة_مفقودة": ("استورد غير_موجودة؛\n" + M, "وحدة غير موجودة"),
+    "عنوان_حقل_مضغوط": (f"بنية مضغوطة ب }} أ: {u8}؛ ج: {s32}؛ {{\nدالة فحص)س: ب(: ^ثابت {s32} }} ارجع @س.ج؛ {{\n" + M, "لا يمكن أخذ عنوان أو شريحة من حقل في بنية مضغوطة"),
+    "شريحة_حقل_مضغوط": (f"بنية مضغوطة ب }} أ: {u8}؛ ج: ]{n(4)}[{s32}؛ {{\nمتغير ع: ب = ب}} أ = {n(0)}، ج = ]{n(0)} مكرر[ {{؛\nدالة فحص)(: ][{s32} }} ارجع ع.ج]{n(0)} : {n(2)}[؛ {{\n" + M, "لا يمكن أخذ عنوان أو شريحة من حقل في بنية مضغوطة"),
 }
 
 # a private name from another module, and an import cycle (two files each)
@@ -382,6 +548,12 @@ def main():
     write("tests/cc/وحدات.غرة", modules_body)
     write("tests/cc/وحدات.out", "".join(out(v) + "\n" for v in modules_out))
     write("tests/cc/وحدات.code", "3\n")
+    write("tests/cc/مضغوطة.غرة", HEADER + packed_body)
+    write("tests/cc/مضغوطة.c", packed_c)
+    write("tests/cc/مضغوطة.out", "".join(out(v) + "\n" for v in packed_out))
+    write("tests/cc/واجهة_سي.غرة", HEADER + abi_body)
+    write("tests/cc/واجهة_سي.c", abi_c)
+    write("tests/cc/واجهة_سي.out", "".join(out(v) + "\n" for v in abi_out))
     for name, (src, stdout) in stops.items():
         write(f"tests/cc/{name}.غرة", src)
         write(f"tests/cc/{name}.out", stdout)

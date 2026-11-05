@@ -131,6 +131,7 @@ typedef enum {
     D_CC_STRUCT_LIT_HERE,
     D_CC_BAD_CHAR,
     D_CC_BAD_MODULE_NAME,
+    D_CC_PACKED_ADDR,
     D_COUNT
 } DiagId;
 
