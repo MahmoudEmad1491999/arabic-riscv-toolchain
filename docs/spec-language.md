@@ -4,7 +4,7 @@
 
 The language is called **غرة** (Ghora); its standard library is also called `غرة` (decision 29).
 
-Status: **draft for review.** Sections marked **Decided (n)** follow decision n in [decisions.md](decisions.md). Everything marked **Proposed** is my proposal and still needs the owner's approval.
+Status: **accepted** (decisions 15–32). Section headings name the decision each part follows; see [decisions.md](decisions.md).
 
 ## 0. Conventions of this document
 
@@ -45,8 +45,8 @@ Arithmetic on integers:
 - Both operands must have the same type, with no promotion. Mixing signed and unsigned is a compile error.
 - Shifts: a constant shift amount out of range is a compile error; a run-time amount is masked to the width.
 - Bitwise (Decided 27): `و_ب`، `أو_ب`، `أو_حصري_ب`، `نفي_ب`.
-- **Proposed** shift operators: `رفع_ب` (toward the most significant bit) and `خفض_ب` (toward the least significant). `خفض_ب` is arithmetic on signed types and logical on unsigned ones, so the type decides.
-- **Proposed** explicit arithmetic variants (built-in functions): `جمع_بفحص` / `طرح_بفحص` / `ضرب_بفحص` stop the program on overflow; `جمع_مشبع` and the others like it clamp.
+- Shift operators (Decided 31): `رفع_ب` (toward the most significant bit) and `خفض_ب` (toward the least significant). `خفض_ب` is arithmetic on signed types and logical on unsigned ones, so the type decides.
+- Explicit arithmetic variants, built-in functions (Decided 31): `جمع_بفحص` / `طرح_بفحص` / `ضرب_بفحص` stop the program on overflow; `جمع_مشبع` and the others like it clamp.
 
 Booleans: `و`، `أو` (short-circuit), `ليس`; the operands must be booleans (Decided 23). Conditions must be booleans.
 
@@ -120,7 +120,7 @@ Booleans: `و`، `أو` (short-circuit), `ليس`; the operands must be booleans
 {
 ```
 
-### 3.6 Function types (Proposed)
+### 3.6 Function types (Decided 31)
 
 `دالة)نوع، نوع(: نوع` is the type of a function value, used for callback tables. It is never null; use `اختياري` for that.
 
@@ -159,7 +159,7 @@ Decided 30: `س = س + ١؛` is the only form.
 {
 ```
 
-### 5.3 Selection (Proposed): `حسب` / `حالة`
+### 5.3 Selection (Decided 31): `حسب` / `حالة`
 
 ```
 حسب ل }
@@ -267,7 +267,7 @@ The result type is unsigned 8-bit because that is exactly what a Linux exit code
 - `خارجي` names are used exactly as written, for interop.
 - The three linkage kinds — private, exported, imported — are the object format's only symbol kinds (decision 11).
 
-## 9. Build and tools (Proposed)
+## 9. Build and tools (Decided 31)
 
 | Tool | Role |
 |---|---|
