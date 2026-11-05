@@ -10,7 +10,7 @@ AS_BIN     := $(BUILD)/مجمع
 LD_SRC     := src/ld/main.c src/ld/ld.c
 LD_BIN     := $(BUILD)/رابط
 
-.PHONY: all test unit oracle asm link fuzz clean
+.PHONY: all test unit oracle asm link fuzz spec spec-check clean
 
 all: $(AS_BIN) $(LD_BIN) $(BUILD)/test_common
 
@@ -45,7 +45,16 @@ link: $(AS_BIN) $(LD_BIN)
 fuzz: $(AS_BIN) $(LD_BIN)
 	./tools/diff_fuzz.py 500
 
-test: unit oracle asm link
+# Specs with generated file-order examples.
+spec:
+	python3 -I tools/gen_spec.py docs/spec-language.src.md docs/spec-language.md
+
+spec-check:
+	@mkdir -p $(BUILD)
+	python3 -I tools/gen_spec.py docs/spec-language.src.md $(BUILD)/spec-language.md
+	cmp -s $(BUILD)/spec-language.md docs/spec-language.md || { echo "docs/spec-language.md is stale: run make spec"; exit 1; }
+
+test: unit oracle asm link spec-check
 
 clean:
 	rm -rf $(BUILD)
