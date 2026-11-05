@@ -50,6 +50,10 @@ Decisions made by the project owner. Newest last.
 43. System services are imports, not raw `ecall`s in programs: programs import the module `نظام`, and each loader binds its functions (our kernel to its own system calls, the Linux loader to Linux's). One executable runs on both; the interface hash of `نظام` lets a loader refuse programs built for a newer system interface.
 44. Processes are created with a single spawn call `شغل` (start a program as a new process); there is no `fork`/`exec`.
 45. The first system calls (stage 4): write to the console, exit, wait for a child, yield the processor, own process number; files come with the file system (stage 5).
-46. Until there is a disk and a file system, user programs are built as `.كائن` objects and embedded in the kernel image.
+46. Until there is a disk and a file system, user programs are built with our tools and embedded in the kernel image. (Clarified: they are embedded as linked ELF executables, A71, because a `.كائن` is relocatable and our executable format only comes in stage 6, which replaces them.)
 47. The scheduler is round-robin, preemptive on every timer tick.
 48. The documentation gets a pipeline (`make docs`) that turns the Markdown in docs/ into PDF showing Arabic source exactly as it looks in the editor: file-order text laid out right to left without the Unicode bidi reordering of numbers and brackets, Latin runs left to right.
+49. The names of the control and status registers and of the Zicsr/privileged instructions (A64, docs/spec-assembler.md) are accepted.
+50. Stage 5 file system: kept simple (docs/spec-fs.md): one flat directory, Arabic file names, each file in contiguous blocks.
+51. A host tool creates file-system images (`مهيئ`), which later also carries the programs.
+52. File system calls: open, read, write, close (system call numbers 7 to 10).

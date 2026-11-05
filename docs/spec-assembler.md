@@ -171,9 +171,9 @@ In Arabic. Plan: build each message in file-order convention (same as source, nu
 | باقي_كلمة | remw |
 | باقي_بلا_إشارة_كلمة | remuw |
 
-## Control and status registers, privileged instructions (proposed, A64)
+## Control and status registers, privileged instructions (approved, decision 49)
 
-For the operating system (decision 39). Zicsr and the privileged instructions; the names are proposals awaiting the owner's review.
+For the operating system (decision 39). Zicsr and the privileged instructions.
 
 | Arabic | GNU | Operands |
 |---|---|---|

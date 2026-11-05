@@ -14,12 +14,18 @@ CC_SRC     := src/cc/main.c src/cc/lex.c src/cc/types.c src/cc/parse.c src/cc/ch
 CC_BIN     := $(BUILD)/مترجم
 OBJ_SRC    := src/obj/main.c
 LIB_SRC    := src/lib/main.c
+FS_SRC     := src/fs/main.c
+FS_BIN     := $(BUILD)/مهيئ
 LIB_BIN    := $(BUILD)/محزم
 OBJ_BIN    := $(BUILD)/عارض
 
 .PHONY: all docs test unit oracle asm link cc objfmt build-mode os fuzz spec spec-check clean
 
-all: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(OBJ_BIN) $(LIB_BIN) $(BUILD)/test_common
+all: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(OBJ_BIN) $(LIB_BIN) $(FS_BIN) $(BUILD)/test_common
+
+$(FS_BIN): $(FS_SRC) $(COMMON_SRC) src/common/*.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $(SANITIZE) -o $@ $(FS_SRC) $(COMMON_SRC)
 
 $(LIB_BIN): $(LIB_SRC) $(COMMON_SRC) src/common/*.h
 	@mkdir -p $(BUILD)
@@ -74,7 +80,7 @@ build-mode: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(LIB_BIN)
 	./tools/run_build_tests.sh
 
 # The operating system (os/): bare-metal kernels on qemu-system-riscv64.
-os: $(AS_BIN) $(LD_BIN) $(CC_BIN)
+os: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(FS_BIN)
 	./tools/run_os_tests.sh
 
 # The documentation as PDF, Arabic shown as in the editor (decision 48):

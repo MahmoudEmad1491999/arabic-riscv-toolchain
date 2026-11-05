@@ -76,8 +76,7 @@ make asm      # our assembler vs GNU as on every test + error tests (linked with
 make link     # our linker vs GNU ld: multi-file programs, coverage, errors
 make cc       # the غرة compiler: programs run under qemu + compile-error tests
 make os       # the operating system: bare-metal kernels on qemu-system-riscv64
-              # (build and run it: tools/build_os.sh, then qemu-system-riscv64 -machine virt
-              #  -bios none -m 128M -nographic -kernel os/بناء/نواة)
+              # (build and run it: see docs/spec-os.md, "Running it")
 make docs     # docs/*.md as PDF in build/docs, Arabic shown as in the editor
               # (needs pandoc and: pip install weasyprint arabic-reshaper)
 make test     # all of the above

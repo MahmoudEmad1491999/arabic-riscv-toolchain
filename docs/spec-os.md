@@ -9,7 +9,8 @@ The operating system is written in غرة, plus the minimum of our Arabic assemb
 | Start, trap entry and exit, context switch | machine / supervisor | `os/بدء.تجميع`, `os/معالج.تجميع` |
 | Machine layer: protection, delegation, timer (A65) | machine | `os/آلة.غرة` |
 | Kernel: pages, Sv39 tables, traps, processes, scheduler, system calls | supervisor | `os/ذاكرة/…`, `os/مشرف/…`, `os/نواة.غرة` |
-| Devices: UART, test device (power-off), CLINT timer | — | `os/جهاز/…` |
+| Devices: UART, test device (power-off), CLINT timer, virtio disk | — | `os/جهاز/…` |
+| File system (docs/spec-fs.md) | supervisor | `os/مشرف/ملفات.غرة` |
 | User library: `نظام` (system services), `طباعة` | user | `os/مستخدم/…` |
 | Programs (embedded in the kernel image, decision 46) | user | `os/برامج/…` |
 
@@ -41,5 +42,20 @@ Programs import the module `نظام`. Stage 4 binds its functions at link time 
 | ٤ | `تخل` | — | — (gives up the processor) |
 | ٥ | `رقمي` | — | the process number |
 | ٦ | `شغل` | program name (`][ثابت طبيعي٨`) | the new process number, or ٠ |
+| ٧–١٠ | `افتح`، `اقرأ`، `اكتب_في`، `أغلق` | see docs/spec-fs.md | |
 
 Language stops in a program (index out of range, overflow, failed conversion) print a message and end the program with code 101.
+
+## Running it
+
+```
+tools/build_os.sh
+build/مهيئ قرص.صورة ملف...
+qemu-system-riscv64 -machine virt -bios none -m 128M -nographic \
+    -global virtio-mmio.force-legacy=false \
+    -drive file=قرص.صورة,if=none,format=raw,id=x0 \
+    -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0 \
+    -kernel os/بناء/نواة
+```
+
+Without a disk the kernel prints `لا قرص` and runs without files.
