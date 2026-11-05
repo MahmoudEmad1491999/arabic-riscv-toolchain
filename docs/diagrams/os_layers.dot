@@ -7,18 +7,18 @@ digraph os_layers {
 
   subgraph cluster_u {
     label="user mode — programs in غرة (os/برامج, os/مستخدم)"; fontname="Helvetica"; fontsize=10; style="rounded,filled"; fillcolor="#f3f9f3"; color="#4b8b4f";
-    progs [label="أول  عداد  دوار  خاطئ", fillcolor="#e8f5e9", color="#4b8b4f"];
-    nizam [label="نظام\nsystem services (imports, decision 43)\nطباعة: text and numbers", fillcolor="#e8f5e9", color="#4b8b4f"];
+    progs [label="بوابة (the shell)\nأول  عداد  دوار  خاطئ\non the disk, our executable format", fillcolor="#e8f5e9", color="#4b8b4f"];
+    nizam [label="نظام\nsystem services: imports bound by the loader\nto the system page at 0x3FF00000\nطباعة: text and numbers", fillcolor="#e8f5e9", color="#4b8b4f"];
     progs -> nizam;
   }
   subgraph cluster_s {
     label="supervisor mode — the kernel in غرة (os/مشرف, os/ذاكرة, os/نواة.غرة)"; fontname="Helvetica"; fontsize=10; style="rounded,filled"; fillcolor="#f2f6fc"; color="#4a6fa5";
-    traps [label="فخاخ\ntimer ticks, system calls,\nexceptions (in Arabic)"];
+    traps [label="فخاخ\ntimer ticks, 12 system calls,\nkeyboard line input, exceptions"];
     procs [label="عمليات\n8 processes, شغل (spawn),\nround-robin scheduler, wait/exit"];
-    loader[label="محمل\nembedded programs (stage 6:\nour executable format, from disk)"];
+    loader[label="محمل\nreads a program from the disk,\nbinds _نظام_ imports to the system page"];
     files [label="ملفات\nflat directory, contiguous files"];
     mem   [label="ترجمة + صفحات\nSv39 tables per process,\nfree list of 4 KiB pages"];
-    traps -> procs; procs -> loader; procs -> files; procs -> mem; loader -> mem;
+    traps -> procs; procs -> loader; procs -> files; procs -> mem; loader -> mem; loader -> files;
   }
   subgraph cluster_m {
     label="machine mode — our own layer in غرة (os/آلة.غرة)"; fontname="Helvetica"; fontsize=10; style="rounded,filled"; fillcolor="#fbf3ea"; color="#b07a2e";

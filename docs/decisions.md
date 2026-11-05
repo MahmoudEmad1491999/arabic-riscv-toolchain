@@ -57,3 +57,6 @@ Decisions made by the project owner. Newest last.
 50. Stage 5 file system: kept simple (docs/spec-fs.md): one flat directory, Arabic file names, each file in contiguous blocks.
 51. A host tool creates file-system images (`مهيئ`), which later also carries the programs.
 52. File system calls: open, read, write, close (system call numbers 7 to 10).
+53. Executables use our object format too (one container, like ELF's ET_REL/ET_EXEC): a header flag marks an executable; its sections sit at fixed addresses (code at `0x10000`, read-only data after it, data from the next page, zeroed data after that); the entry point is the exported symbol `_بداية`; the only symbols left unresolved are imports of the system interface, which the loader binds (decision 43). The kernel image stays ELF because QEMU loads ELF.
+54. Programs live on the disk, put there by `مهيئ`; the kernel loads them by name from the file system. Nothing is embedded in the kernel image any more.
+55. The shell is called **بوابة** (the gateway): it runs programs by name and has a few built-in commands; it reads the keyboard through the serial port.

@@ -68,6 +68,8 @@ typedef struct {
 struct GlobalSym {
     const char *name;
     int defined;
+    int import;        /* program mode: a system import left for the loader */
+    uint32_t import_index;
     int special;       /* defined by the linker (A67): 1 = _نهاية, 2 = _بداية_البيانات */
     int weak;
     InObj *obj;
@@ -92,9 +94,20 @@ typedef struct {
     int nphdr;
     uint64_t base;            /* LD_BASE, or LD_BASE_BARE for a bare-metal image */
     uint64_t seg_off;         /* file offset of the first segment (bare: one page) */
+    int program;              /* --برنامج: our executable format (decision 53) */
+    Buf imports;              /* GlobalSym* of the system imports, in first-use order */
+    Buf out_relocs;           /* OutReloc: relocations left for the loader */
     Buf libs;                 /* LibMember: members of .مكتبة files not linked yet */
     Buf lib_files;            /* RtBuf of each library file */
 } Linker;
+
+typedef struct {
+    int out;                  /* OUT_* */
+    uint64_t offset;          /* inside the output section */
+    uint8_t kind;             /* OBJ_REL_* */
+    GlobalSym *sym;           /* NULL for the PC-relative low kinds */
+    int64_t extra;            /* addend, or the offset of the paired high part */
+} OutReloc;
 
 typedef struct {
     const char *lib;          /* library path */
@@ -109,5 +122,7 @@ void ld_free(Linker *ld);
 int ld_read_object(Linker *ld, const char *path);
 int ld_link(Linker *ld);
 int ld_write(Linker *ld, const char *path);
+/* --برنامج: writes our executable format instead of ELF. */
+int ld_write_program(Linker *ld, const char *path);
 
 #endif

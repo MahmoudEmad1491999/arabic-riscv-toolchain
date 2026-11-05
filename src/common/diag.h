@@ -74,6 +74,7 @@ typedef enum {
     D_CC_IFACE,
     D_LIB_USAGE,
     D_LINK_BARE_ENTRY,
+    D_LINK_IMPORT_RELOC,
     D_EXPECTED_CSR,
     D_INCLUDE_FAILED,
     D_FS_USAGE,

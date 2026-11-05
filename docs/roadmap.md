@@ -65,4 +65,4 @@
 - [x] Stage 3: physical page allocator, Sv39 paging with the kernel mapped by permission, linker-defined `_نهاية` / `_بداية_البيانات`, page-fault test
 - [x] Stage 4: user mode, processes with their own page tables, round-robin preemptive scheduler, system calls (`نظام`: اكتب، اخرج، انتظر، تخل، رقمي، شغل), programs embedded with `.تضمين`, a user exception ends only its process (docs/spec-os.md)
 - [x] Stage 5: virtio disk driver in غرة, a simple file system (docs/spec-fs.md), `مهيئ` to create disk images, system calls افتح/اقرأ/اكتب_في/أغلق; the test boots twice on one disk to check that written files persist
-- [ ] Stage 6: our executable format and its loader in the kernel, a shell with Arabic commands
+- [x] Stage 6: executables in our object format (`رابط --برنامج`), programs on the disk, the loader in the kernel binding the system imports to the system page, keyboard input, the shell `بوابة` — Phase 5's exit condition is met

@@ -12,13 +12,13 @@ The operating system is written in غرة, plus the minimum of our Arabic assemb
 | Devices: UART, test device (power-off), CLINT timer, virtio disk | — | `os/جهاز/…` |
 | File system (docs/spec-fs.md) | supervisor | `os/مشرف/ملفات.غرة` |
 | User library: `نظام` (system services), `طباعة` | user | `os/مستخدم/…` |
-| Programs (embedded in the kernel image, decision 46) | user | `os/برامج/…` |
+| Programs, in our executable format, on the disk (decisions 53, 54) | user | `os/برامج/…` |
 
 ## Processes (decisions 44, 47; A71)
 
 - At most 8 processes. A process has a number (starting at 1), its own Sv39 page table (the kernel mapped without the user bit, its own pages with it) and its own 8 KiB kernel stack.
 - States: `حرة` (free slot), `جاهزة` (ready), `تعمل` (running), `تنتظر` (waiting for a child), `منتهية` (finished, not yet collected).
-- `شغل` starts an embedded program in a new process; there is no `fork` (decision 44). The kernel starts the program `أول` at boot and powers off when no process is left.
+- `شغل` loads a program from the disk into a new process; there is no `fork` (decision 44). The kernel starts the program `أول` at boot and powers off when no process is left. `أول` runs the system tests and then starts the shell `بوابة`.
 - Scheduling is round-robin; every timer tick (10 ms) taken in user mode makes the process give up the processor (decision 47). The kernel itself is not preempted.
 - An exception in a user process (page fault, illegal instruction …) prints its cause and ends that process with code 102; an exception in the kernel stops the system with code 102.
 
@@ -32,7 +32,7 @@ The operating system is written in غرة, plus the minimum of our Arabic assemb
 
 ## The system interface `نظام` (decision 43)
 
-Programs import the module `نظام`. Stage 4 binds its functions at link time to `ecall` stubs (`os/مستخدم/runtime/تشغيل.تجميع`); the loader of stage 6 will bind them at load time. The call number is in `وسيط٧`, the arguments in `وسيط٠` …, the result in `وسيط٠` (and `وسيط١`).
+Programs import the module `نظام`, whose functions call the imports `_نظام_<name>`. The executable leaves those unresolved; the loader binds each one to its entry in the **system page**, a page of `ecall` stubs (3 instructions each, in call-number order) that the kernel maps into every process at `0x3FF00000` (decisions 43, 53). The call number is in `وسيط٧`, the arguments in `وسيط٠` …, the result in `وسيط٠` (and `وسيط١`).
 
 | Number | `نظام.` | Arguments | Result |
 |---|---|---|---|
@@ -43,19 +43,24 @@ Programs import the module `نظام`. Stage 4 binds its functions at link time 
 | ٥ | `رقمي` | — | the process number |
 | ٦ | `شغل` | program name (`][ثابت طبيعي٨`) | the new process number, or ٠ |
 | ٧–١٠ | `افتح`، `اقرأ`، `اكتب_في`، `أغلق` | see docs/spec-fs.md | |
+| ١١ | `اقرأ_سطرا` | buffer (`][طبيعي٨`) | the length of a line typed on the keyboard (the serial port), without its end; typed characters are echoed, backspace erases a whole character |
+| ١٢ | `مدخل_الدليل` | position, buffer | the length of the name of the file at that position in the directory, ٠ after the last |
 
 Language stops in a program (index out of range, overflow, failed conversion) print a message and end the program with code 101.
+
+## The shell `بوابة` (decision 55)
+
+One command per line: `اعرض` lists the files on the disk, `اطبع ملف` prints a file, `خروج` ends the shell; any other word runs the program of that name and reports its exit code.
 
 ## Running it
 
 ```
-tools/build_os.sh
-build/مهيئ قرص.صورة ملف...
+tools/build_os.sh            # programs, kernel, and os/بناء/قرص.صورة
 qemu-system-riscv64 -machine virt -bios none -m 128M -nographic \
     -global virtio-mmio.force-legacy=false \
-    -drive file=قرص.صورة,if=none,format=raw,id=x0 \
+    -drive file=os/بناء/قرص.صورة,if=none,format=raw,id=x0 \
     -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0 \
     -kernel os/بناء/نواة
 ```
 
-Without a disk the kernel prints `لا قرص` and runs without files.
+Without a disk the kernel prints `لا قرص` and cannot start `أول`. Type commands for `بوابة` in the terminal; the serial port is the keyboard and the screen.

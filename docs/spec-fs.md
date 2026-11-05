@@ -58,4 +58,4 @@ Each process has 8 descriptors; they are closed when it ends.
 مهيئ قرص.صورة [ملف...]
 ```
 
-Creates a 4 MiB image (8192 blocks) holding the given files; each file is named after the last part of its path.
+Creates a 4 MiB image (8192 blocks) holding the given files; each file is named after the last part of its path. `tools/build_os.sh` uses it to put the programs (in our executable format) and the files of `os/ملفات` on the disk (decision 54).

@@ -8,6 +8,7 @@
 #include "../common/rt.h"
 #include "../common/utf8.h"
 #include "../ld/ld.h"
+#include "../common/obj.h"
 
 int tool_assemble(const uint8_t *text, size_t len, const char *name, const char *out,
                   const uint8_t *iface, size_t iface_len)
@@ -44,7 +45,7 @@ int tool_assemble(const uint8_t *text, size_t len, const char *name, const char 
     return rc;
 }
 
-int tool_link(const char *out, const char *const *inputs, size_t n, int bare)
+int tool_link(const char *out, const char *const *inputs, size_t n, int mode)
 {
     Arena arena;
     Linker ld;
@@ -53,7 +54,11 @@ int tool_link(const char *out, const char *const *inputs, size_t n, int bare)
 
     arena_init(&arena);
     ld_init(&ld, &arena);
-    if (bare) ld.base = LD_BASE_BARE;
+    if (mode == 1) ld.base = LD_BASE_BARE;
+    if (mode == 2) {
+        ld.program = 1;
+        ld.base = OBJ_PROGRAM_BASE;
+    }
     for (i = 0; i < n; i++) {
         if (ld_read_object(&ld, inputs[i]) != 0) {
             rc = -1;
@@ -62,7 +67,7 @@ int tool_link(const char *out, const char *const *inputs, size_t n, int bare)
     if (rc == 0 && ld_link(&ld) != 0) {
         rc = -1;
     }
-    if (rc == 0 && ld_write(&ld, out) != 0) {
+    if (rc == 0 && (mode == 2 ? ld_write_program(&ld, out) : ld_write(&ld, out)) != 0) {
         diag_plain(D_CANNOT_WRITE, out);
         rc = -1;
     }

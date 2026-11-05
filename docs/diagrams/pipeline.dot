@@ -19,6 +19,8 @@ digraph pipeline {
   elfo  [label="X.o\nELF64 relocatable\n(bridge to GNU / GCC)", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
   mlib  [label="X.مكتبة\nlibrary of objects", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
   exe   [label="executable\nELF64, static\n(hosted at 0x10000)", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  prog  [label="program\nour executable format\n(--برنامج, system imports\nleft for the loader)", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
+  fsimg [label="disk image\nمهيئ", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
   kern  [label="kernel image\n--عاري: bare metal\nat 0x80000000", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
   text  [label="text form\n(read-only, for people)", shape=note, fillcolor="#fff7e0", color="#b08a2e"];
 
@@ -36,6 +38,7 @@ digraph pipeline {
   obj -> ld; elfo -> ld; mlib -> ld [label="only needed\nmembers"];
   ld -> exe -> qemuu;
   ld -> kern -> qemus;
+  ld -> prog -> fsimg -> qemus;
 
   node  [fillcolor="#f4f4f4", color="#888888"];
   edge  [style=dashed, color="#888888"];

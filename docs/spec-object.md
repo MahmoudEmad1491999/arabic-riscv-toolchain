@@ -102,6 +102,15 @@ The text is غرة source, in file order like every source file: the module's `�
 - **Importing a compiled module:** when `a/b.غرة` is not found, the compiler looks for `a/b.كائن` in the same search paths, then in the libraries given on the command line, and parses the interface text.
 - **Stale objects:** `رابط` compares, for every object with an interface, the recorded hash of each import with the interface hash of the object that provides that module. A mismatch is an error naming the module and the stale object. The same module twice in one link is an error.
 
+## Executables (decision 53)
+
+A program for our operating system is a `.كائن` too, written by `رابط --برنامج` (or `مترجم … --برنامج`):
+
+- header `flags` bit 0 (`1`) marks an executable (`عارض` prints `كائن تنفيذي`); a linker refuses an executable as input;
+- the sections have fixed addresses: `نص` at `0x10000`; `ثوابت` right after it at its alignment; `بيانات` at the next page boundary (then its alignment); `أصفار` after `بيانات` at its alignment. Symbol values stay relative to their section, as in objects;
+- the entry point is the exported symbol `_بداية`;
+- the only imported symbols are the system interface, names starting with `_نظام_`; every other undefined name is a link error. The relocations left in the file all refer to them: `نداء`، `نسبي_عال`، `نسبي_منخفض_ي/خ` (paired with a high part that refers to an import) and `كلمة_مزدوجة`. Any other kind against an import is a link error. The loader binds them (docs/spec-os.md).
+
 ## Libraries (`.مكتبة`, decision 38)
 
 Made by `محزم مكتبة.مكتبة أ.كائن ب.كائن…`.

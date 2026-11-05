@@ -78,6 +78,26 @@ for src in "$ROOT"/tests/cc/*.غرة; do
     report "obj/cc/$name" $ok
 done
 
+# our executable format (رابط --برنامج, decision 53)
+P="$OUT/program"
+mkdir -p "$P"
+printf '.شفرة\n.عام _بداية\n_بداية:\n    استدعاء _نظام_اكتب\n    حمل_عنوان وسيط٠، _نظام_اخرج\n    استدعاء _نظام_اخرج\n' > "$P/جيد.تجميع"
+printf '.شفرة\n.عام _بداية\n_بداية:\n    استدعاء غير_موجود\n' > "$P/مفقود.تجميع"
+printf '.شفرة\n.عام _بداية\n_بداية:\n    قفز _نظام_اخرج\n' > "$P/قفزة.تجميع"
+ok=1
+for f in جيد مفقود قفزة; do "$AS" "$P/$f.تجميع" "$P/$f.كائن" || ok=0; done
+"$LD" --برنامج "$P/جيد" "$P/جيد.كائن" || { echo "  program: link failed"; ok=0; }
+"$VIEW" "$P/جيد" > "$P/جيد.txt" || ok=0
+grep -q "كائن تنفيذي" "$P/جيد.txt" && grep -q "رمز مستورد _نظام_اكتب" "$P/جيد.txt" &&
+    grep -q "إعادة_توطين نسبي_منخفض_ي" "$P/جيد.txt" || { echo "  program: unexpected text form"; ok=0; }
+DIAG_ORDER=file "$LD" --برنامج "$P/x" "$P/مفقود.كائن" 2> "$P/err1" && ok=0
+grep -qF "مرجع إلى رمز غير معرف" "$P/err1" || { echo "  program: undefined name accepted"; ok=0; }
+DIAG_ORDER=file "$LD" --برنامج "$P/x" "$P/قفزة.كائن" 2> "$P/err2" && ok=0
+grep -qF "نوع نقل لا يتركه البرنامج للمحمل" "$P/err2" || { echo "  program: jump to an import accepted"; ok=0; }
+DIAG_ORDER=file "$LD" "$P/x" "$P/جيد" 2> "$P/err3" && ok=0
+grep -qF "ملف كائن غير صالح" "$P/err3" || { echo "  program: executable accepted as input"; ok=0; }
+report "obj/program" $ok
+
 # damaged objects and libraries: random bytes changed or cut off; the
 # linker, the viewer and the compiler (importing the module) must reject or
 # accept, never crash (ASan would abort).

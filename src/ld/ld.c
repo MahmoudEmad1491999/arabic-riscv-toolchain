@@ -90,6 +90,8 @@ void ld_init(Linker *ld, Arena *a)
     ld->base = LD_BASE;
     buf_init(&ld->libs);
     buf_init(&ld->lib_files);
+    buf_init(&ld->imports);
+    buf_init(&ld->out_relocs);
     buf_init(&ld->globals);
     for (k = 0; k < OUT_COUNT; k++) {
         buf_init(&ld->out_data[k]);
@@ -114,6 +116,8 @@ void ld_free(Linker *ld)
         }
         buf_free(&ld->lib_files);
         buf_free(&ld->libs);
+        buf_free(&ld->imports);
+        buf_free(&ld->out_relocs);
     }
     for (k = 0; k < OUT_COUNT; k++) {
         buf_free(&ld->out_data[k]);
@@ -141,7 +145,7 @@ static int read_native(Linker *ld, InObj *o)
     size_t base, nrela_secs = 0;
     int k;
 
-    if (obj_parse(o->file.data, o->file.len, &v) != 0) {
+    if (obj_parse(o->file.data, o->file.len, &v) != 0 || (v.flags & OBJ_FLAG_EXECUTABLE)) {
         return bad_object(o->path);
     }
     for (i = 0; i < v.nrelocs; i++) {
@@ -468,6 +472,15 @@ static int resolve_symbols(Linker *ld)
         InObj *o = &ld->objs[i];
         for (j = 1; j < o->nsyms; j++) {
             InSym *y = &o->syms[j];
+            if (ld->program && y->global != NULL && y->shndx == SHN_UNDEF && !y->global->defined &&
+                strncmp(y->name, OBJ_SYSTEM_PREFIX, strlen(OBJ_SYSTEM_PREFIX)) == 0) {
+                if (!y->global->import) { /* left for the loader (decision 53) */
+                    y->global->import = 1;
+                    y->global->import_index = (uint32_t)(ld->imports.len / sizeof(GlobalSym *));
+                    buf_bytes(&ld->imports, &y->global, sizeof y->global);
+                }
+                continue;
+            }
             if (y->global != NULL && y->shndx == SHN_UNDEF && !y->global->defined &&
                 y->bind == STB_GLOBAL) {
                 diag_plain2(D_LINK_UNDEFINED, y->name, o->path);
@@ -513,7 +526,7 @@ static int layout(Linker *ld)
     /* hosted: the headers are part of the first segment (like GNU ld).
      * bare (A61): the code starts exactly at the base address, where the
      * machine starts executing, and the headers stay outside the image. */
-    ld->seg_off = ld->base == LD_BASE_BARE ? LD_PAGE : 0;
+    ld->seg_off = ld->base == LD_BASE_BARE || ld->program ? LD_PAGE : 0;
     ld->out_addr[OUT_TEXT] = ld->seg_off ? ld->base
                                          : align_up(ld->base + hdr, ld->out_align[OUT_TEXT]);
     ld->out_addr[OUT_RODATA] = align_up(ld->out_addr[OUT_TEXT] + ld->out_size[OUT_TEXT],
@@ -527,6 +540,10 @@ static int layout(Linker *ld)
                                            ? ld->out_align[OUT_DATA] : ld->out_align[OUT_BSS]);
     ld->out_fileoff[OUT_DATA] = fileoff;
     ld->out_addr[OUT_DATA] = align_up(end1, LD_PAGE) + (fileoff % LD_PAGE);
+    if (ld->program) {
+        /* our executable format: the fixed layout of decision 53 */
+        ld->out_addr[OUT_DATA] = align_up(align_up(end1, LD_PAGE), ld->out_align[OUT_DATA]);
+    }
     ld->out_addr[OUT_BSS] = align_up(ld->out_addr[OUT_DATA] + ld->out_size[OUT_DATA],
                                      ld->out_align[OUT_BSS]);
     ld->out_fileoff[OUT_BSS] = ld->out_fileoff[OUT_DATA] + ld->out_size[OUT_DATA];
@@ -676,6 +693,67 @@ static int pcrel_hi_value(Linker *ld, InObj *o, const InSec *rs, const InSec *ta
     return -1;
 }
 
+static int is_import(const InObj *o, uint32_t sym)
+{
+    return sym < o->nsyms && o->syms[sym].global != NULL && o->syms[sym].global->import;
+}
+
+static void out_reloc(Linker *ld, const InSec *target, uint64_t offset, uint8_t kind,
+                      GlobalSym *g, int64_t extra)
+{
+    OutReloc x;
+    x.out = target->out;
+    x.offset = target->out_off + offset;
+    x.kind = kind;
+    x.sym = g;
+    x.extra = extra;
+    buf_bytes(&ld->out_relocs, &x, sizeof x);
+}
+
+/* Program mode: a relocation that refers to a system import (directly, or
+ * as the low part of a PC-relative pair whose high part does) is kept for
+ * the loader. Returns 1 if it was taken. */
+static int program_import_reloc(Linker *ld, InObj *o, InSec *rs, InSec *target, const Rela *r, int *rc)
+{
+    if (r->type == R_RISCV_PCREL_LO12_I || r->type == R_RISCV_PCREL_LO12_S) {
+        /* the label points at the high part: find it in the same section */
+        const InSym *l = &o->syms[r->sym];
+        size_t n = rs->size / ELF_RELA_SIZE, i;
+        if (l->shndx >= o->shnum || &o->secs[l->shndx] != target) {
+            return 0;
+        }
+        for (i = 0; i < n; i++) {
+            Rela h = rela_at(o, rs, i);
+            if (h.type == R_RISCV_PCREL_HI20 && h.offset == l->value && is_import(o, h.sym)) {
+                out_reloc(ld, target, r->offset,
+                          r->type == R_RISCV_PCREL_LO12_I ? OBJ_REL_PCREL_LO_I : OBJ_REL_PCREL_LO_S,
+                          NULL, (int64_t)(target->out_off + h.offset));
+                return 1;
+            }
+        }
+        return 0;
+    }
+    if (!is_import(o, r->sym)) {
+        return 0;
+    }
+    switch (r->type) {
+    case R_RISCV_CALL:
+    case R_RISCV_CALL_PLT:
+        out_reloc(ld, target, r->offset, OBJ_REL_CALL, o->syms[r->sym].global, r->addend);
+        return 1;
+    case R_RISCV_PCREL_HI20:
+        out_reloc(ld, target, r->offset, OBJ_REL_PCREL_HI, o->syms[r->sym].global, r->addend);
+        return 1;
+    case R_RISCV_64:
+        out_reloc(ld, target, r->offset, OBJ_REL_DWORD, o->syms[r->sym].global, r->addend);
+        return 1;
+    default:
+        diag_plain2(D_LINK_IMPORT_RELOC, o->syms[r->sym].name, o->path);
+        *rc = -1;
+        return 1;
+    }
+}
+
 static int apply_relocs(Linker *ld, InObj *o, InSec *rs)
 {
     InSec *target;
@@ -710,6 +788,9 @@ static int apply_relocs(Linker *ld, InObj *o, InSec *rs)
             }
         }
         place = ld->out_data[target->out].data + target->out_off + r.offset;
+        if (ld->program && program_import_reloc(ld, o, rs, target, &r, &rc)) {
+            continue; /* left for the loader */
+        }
         s = sym_addr(ld, o, r.sym, &ok);
         if (!ok) {
             diag_plain2(D_LINK_UNDEFINED, o->syms[r.sym].name, o->path);
@@ -1134,5 +1215,100 @@ int ld_write(Linker *ld, const char *path)
     buf_free(&symtab);
     buf_free(&strtab);
     buf_free(&shstr);
+    return rc;
+}
+
+/* ------------------------------------------------------------------ */
+/* Our executable format (decision 53)                                 */
+
+static const int out_to_obj[OUT_COUNT] = {OBJ_SEC_TEXT, OBJ_SEC_RODATA, OBJ_SEC_DATA, OBJ_SEC_BSS};
+
+int ld_write_program(Linker *ld, const char *path)
+{
+    Buf syms, relocs, out;
+    ObjOut o;
+    GlobalSym **imps = (GlobalSym **)ld->imports.data;
+    size_t nimps = ld->imports.len / sizeof *imps;
+    OutReloc *rs = (OutReloc *)ld->out_relocs.data;
+    size_t nrs = ld->out_relocs.len / sizeof *rs;
+    uint32_t base_index;
+    size_t i, j;
+    int pass, k, rc;
+
+    buf_init(&syms);
+    buf_init(&relocs);
+    buf_init(&out);
+    /* private (named locals) first, then exported, then the imports */
+    for (pass = 0; pass < 2; pass++) {
+        for (i = 0; i < ld->nobjs; i++) {
+            InObj *ob = &ld->objs[i];
+            for (j = 1; j < ob->nsyms; j++) {
+                InSym *y = &ob->syms[j];
+                ObjSym x;
+                uint64_t addr;
+                int global = y->global != NULL, ok;
+                if (global != pass || y->type == STT_SECTION || y->type == 4 || y->name[0] == 0 ||
+                    strncmp(y->name, ".L", 2) == 0 || y->shndx == SHN_UNDEF) {
+                    continue;
+                }
+                if (global && (y->global->obj != ob || y->global->sym != j)) {
+                    continue;
+                }
+                addr = sym_addr(ld, ob, j, &ok);
+                if (!ok) {
+                    continue;
+                }
+                memset(&x, 0, sizeof x);
+                x.name = (const uint8_t *)y->name;
+                x.len = (uint32_t)strlen(y->name);
+                x.kind = global ? OBJ_EXPORTED : OBJ_PRIVATE;
+                if (y->shndx == SHN_ABS) {
+                    x.section = OBJ_SEC_ABS;
+                    x.value = addr;
+                } else {
+                    int out = ob->secs[y->shndx].out;
+                    x.section = (uint8_t)out_to_obj[out];
+                    x.value = addr - ld->out_addr[out];
+                }
+                buf_bytes(&syms, &x, sizeof x);
+            }
+        }
+    }
+    base_index = (uint32_t)(syms.len / sizeof(ObjSym));
+    for (i = 0; i < nimps; i++) {
+        ObjSym x;
+        memset(&x, 0, sizeof x);
+        x.name = (const uint8_t *)imps[i]->name;
+        x.len = (uint32_t)strlen(imps[i]->name);
+        x.kind = OBJ_IMPORTED;
+        x.section = OBJ_SEC_UNDEF;
+        buf_bytes(&syms, &x, sizeof x);
+    }
+    for (i = 0; i < nrs; i++) {
+        ObjReloc x;
+        x.offset = rs[i].offset;
+        x.section = (uint8_t)out_to_obj[rs[i].out];
+        x.kind = rs[i].kind;
+        x.sym = rs[i].sym ? base_index + rs[i].sym->import_index : OBJ_NO_SYMBOL;
+        x.extra = rs[i].extra;
+        buf_bytes(&relocs, &x, sizeof x);
+    }
+    memset(&o, 0, sizeof o);
+    o.flags = OBJ_FLAG_EXECUTABLE;
+    for (k = 0; k < OUT_COUNT; k++) {
+        int s = out_to_obj[k];
+        o.content[s] = k == OUT_BSS ? NULL : ld->out_data[k].data;
+        o.size[s] = ld->out_size[k];
+        o.align[s] = (uint32_t)ld->out_align[k];
+    }
+    o.syms = (const ObjSym *)syms.data;
+    o.nsyms = syms.len / sizeof(ObjSym);
+    o.relocs = (const ObjReloc *)relocs.data;
+    o.nrelocs = relocs.len / sizeof(ObjReloc);
+    obj_serialize(&o, &out);
+    rc = rt_write_file(path, out.data, out.len);
+    buf_free(&syms);
+    buf_free(&relocs);
+    buf_free(&out);
     return rc;
 }

@@ -105,7 +105,7 @@ void obj_serialize(const ObjOut *o, Buf *out)
     /* names are placed first so their offsets are known */
     buf_bytes(out, MAGIC, 8);
     buf_u32(out, OBJ_VERSION);
-    buf_u32(out, 0);
+    buf_u32(out, o->flags);
     for (k = 0; k < OBJ_NSEC; k++) {
         buf_u64(out, o->size[k]);
     }
@@ -174,6 +174,10 @@ int obj_parse(const uint8_t *d, size_t len, ObjView *v)
     }
     v->file = d;
     v->len = len;
+    v->flags = rd32(d + 12);
+    if ((v->flags & ~OBJ_FLAG_EXECUTABLE) != 0) {
+        return -1;
+    }
     for (k = 0; k < OBJ_NSEC; k++) {
         v->size[k] = rd64(d + 16 + 8 * k);
         v->align[k] = rd32(d + 48 + 4 * k);
@@ -413,7 +417,7 @@ void obj_dump(const ObjView *v, Buf *out)
     uint32_t i;
     int k;
 
-    put_text(out, "كائن إصدار ");
+    put_text(out, v->flags & OBJ_FLAG_EXECUTABLE ? "كائن تنفيذي إصدار " : "كائن إصدار ");
     put_num(out, OBJ_VERSION);
     put_text(out, "\n");
     for (k = 0; k < OBJ_NSEC; k++) {

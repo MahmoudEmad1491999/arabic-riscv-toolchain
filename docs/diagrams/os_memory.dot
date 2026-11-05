@@ -6,7 +6,7 @@ digraph os_memory {
   edge  [fontname="Helvetica", fontsize=9, color="#4a6fa5"];
 
   phys [label="physical (= kernel's virtual)|0x100000 test device|0x2000000 CLINT (machine mode only)|0x10000000 UART|0x10001000 virtio disk|<k> 0x80000000 kernel code + read-only data (R X)|<d> _بداية_البيانات: data, bss, stacks (R W)|<f> free pages (R W): from _نهاية up to 0x88000000"];
-  proc [label="process (user bit set)|<c> 0x10000 program code + read-only data|<pd> next page: data + bss|…|<st> 4 stack pages ending at 0x40000000|<kk> from 0x80000000: the kernel, no user bit\n(same in every table, so traps need no switch)", fillcolor="#e8f5e9", color="#4b8b4f"];
+  proc [label="process (user bit set)|<c> 0x10000 program code + read-only data|<pd> next page: data + bss|…|<sp> 0x3FF00000 system page (shared, never freed)|<st> 4 stack pages ending at 0x40000000|<kk> from 0x80000000: the kernel, no user bit\n(same in every table, so traps need no switch)", fillcolor="#e8f5e9", color="#4b8b4f"];
   proc:c -> phys:f [label="pages from\nthe free list"];
   proc:pd -> phys:f; proc:st -> phys:f;
   proc:kk -> phys:k [label="identity\nmapping"];

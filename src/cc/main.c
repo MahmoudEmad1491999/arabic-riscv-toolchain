@@ -1,10 +1,11 @@
 /* main.c - مترجم: the غرة compiler.
  * Usage:
- *   مترجم رئيسي.غرة [--عاري] [مسار_بحث | ملف.o | ملف.كائن | ملف.مكتبة | ملف.تجميع ...]
+ *   مترجم رئيسي.غرة [--عاري | --برنامج] [مسار_بحث | ملف.o | ملف.كائن | ملف.مكتبة | ملف.تجميع ...]
  *     build: one .كائن per module in بناء/ (only what is out of date), then
  *     link بناء/رئيسي (decision 37). --عاري: a bare-metal image at
  *     0x80000000 with no hosted start file; the program brings its own
  *     assembly (.تجميع files are assembled into بناء/ and linked).
+ *     --برنامج: our executable format for our operating system (decision 53).
  *   مترجم رئيسي.غرة خرج.تجميع [مسار_بحث ...]
  *     one Arabic assembly file for the whole program (assumption A37). */
 #include "cc.h"
@@ -402,7 +403,7 @@ static int build(Arena *a, Program *prog, const char *rootdir, const uint8_t *st
         buf_free(&region);
     }
     /* the start file: lib/runtime/تشغيل.تجميع from a search path */
-    for (i = 1; i < ndirs && rc == 0 && !bare; i++) {
+    for (i = 1; i < ndirs && rc == 0 && bare != 1; i++) {
         char *rt_src = concat(a, dirs[i], "/runtime/تشغيل.تجميع");
         RtBuf src;
         if (rt_read_file(rt_src, &src) == 0) {
@@ -484,6 +485,8 @@ int main(int argc, char **argv)
         const char *arg = argv[i];
         if (strcmp(arg, "--عاري") == 0) {
             bare = 1;
+        } else if (strcmp(arg, "--برنامج") == 0) {
+            bare = 2;
         } else if (build_mode && ends_with(arg, ".تجميع")) {
             asms[nasms++] = arg;
         } else if (ends_with(arg, ".مكتبة")) {

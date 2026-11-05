@@ -16,6 +16,10 @@
 #define OBJ_NSEC        4
 #define OBJ_MAX_ALIGN   4096u
 #define OBJ_NO_SYMBOL   0xFFFFFFFFu
+#define OBJ_FLAG_EXECUTABLE 1u   /* decision 53 */
+#define OBJ_PROGRAM_BASE    0x10000u
+/* A system import of an executable (decision 43): bound by the loader. */
+#define OBJ_SYSTEM_PREFIX   "_نظام_"
 
 enum { OBJ_SEC_TEXT, OBJ_SEC_DATA, OBJ_SEC_RODATA, OBJ_SEC_BSS,
        OBJ_SEC_ABS = 4, OBJ_SEC_UNDEF = 255 };
@@ -49,6 +53,7 @@ typedef struct {
     size_t nsyms;
     const ObjReloc *relocs;
     size_t nrelocs;
+    uint32_t flags;         /* OBJ_FLAG_* */
     const uint8_t *iface;   /* encoded interface region (obj_iface_encode), or NULL */
     size_t iface_len;
 } ObjOut;
@@ -83,6 +88,7 @@ void obj_serialize(const ObjOut *o, Buf *out);
 typedef struct {
     const uint8_t *file;
     size_t len;
+    uint32_t flags;
     uint64_t size[OBJ_NSEC];
     uint32_t align[OBJ_NSEC];
     uint64_t content_off[OBJ_NSEC];
