@@ -89,7 +89,7 @@ rm -rf "$M"; mkdir -p "$M/اختبار_وحدات"
 cp "$ROOT/tests/cc/وحدات.غرة" "$M/"
 cp "$ROOT/tests/cc/اختبار_وحدات/حساب.غرة" "$M/اختبار_وحدات/"
 "$CC" "$M/وحدات.غرة" "$ROOT/lib" || exit 1
-"$ROOT/build/محزم" "$OUT/victim.مكتبة" "$M/بناء/غرة/نصوص.كائن" "$M/بناء/تشغيل.كائن" || exit 1
+"$ROOT/build/محزم" "$OUT/victim.مكتبة" "$M/بناء/غرة/نصوص.كائن" "$M/بناء/تشغيل.تجميع.كائن" || exit 1
 ok=1
 python3 -I - "$OUT" "$LD" "$VIEW" "$CC" "$ROOT/lib" "$OUT/victim.كائن" "$M/بناء/اختبار_وحدات/حساب.كائن" "$OUT/victim.مكتبة" <<'PY' || ok=0
 import os, subprocess, sys, random

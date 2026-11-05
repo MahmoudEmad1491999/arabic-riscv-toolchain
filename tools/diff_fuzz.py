@@ -65,7 +65,7 @@ def main():
         if re.search(r"^\.align [012]$", text, re.M):   # A15
             stats["skipped"] += 1
             continue
-        g = run(PREFIX + "as", "-march=rv64im", "-mabi=lp64", "-mno-relax", ref_s, "-o", ref_o)
+        g = run(PREFIX + "as", "-march=rv64im_zicsr", "-mabi=lp64", "-mno-relax", ref_s, "-o", ref_o)
         if g.returncode:                                   # A14: GNU is stricter
             stats["skipped"] += 1
             continue

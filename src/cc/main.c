@@ -360,7 +360,8 @@ static int build(Arena *a, Program *prog, const char *rootdir, const uint8_t *st
         name[0] = '/';
         memcpy(name + 1, base, n);
         name[n + 1] = 0;
-        obj = concat(a, concat(a, out_dir, name), ".كائن");
+        /* X.تجميع.كائن: never the object of a module (module paths have no dots) */
+        obj = concat(a, concat(a, out_dir, name), ".تجميع.كائن");
         if (rt_read_file(asms[i], &src) != 0) {
             diag_plain(D_CANNOT_READ, asms[i]);
             rc = 2;
@@ -405,7 +406,7 @@ static int build(Arena *a, Program *prog, const char *rootdir, const uint8_t *st
         char *rt_src = concat(a, dirs[i], "/runtime/تشغيل.تجميع");
         RtBuf src;
         if (rt_read_file(rt_src, &src) == 0) {
-            char *obj = concat(a, out_dir, "/تشغيل.كائن");
+            char *obj = concat(a, out_dir, "/تشغيل.تجميع.كائن");
             if (rt_make_dirs(out_dir) != 0 ||
                 tool_assemble(src.data, src.len, rt_src, obj, NULL, 0) != 0) {
                 rc = 1;

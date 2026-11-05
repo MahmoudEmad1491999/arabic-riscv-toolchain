@@ -171,6 +171,59 @@ In Arabic. Plan: build each message in file-order convention (same as source, nu
 | باقي_كلمة | remw |
 | باقي_بلا_إشارة_كلمة | remuw |
 
+## Control and status registers, privileged instructions (proposed, A64)
+
+For the operating system (decision 39). Zicsr and the privileged instructions; the names are proposals awaiting the owner's review.
+
+| Arabic | GNU | Operands |
+|---|---|---|
+| قراءة_وكتابة_تحكم | csrrw | rd، csr، rs1 |
+| قراءة_وضبط_تحكم | csrrs | rd، csr، rs1 |
+| قراءة_ومسح_تحكم | csrrc | rd، csr، rs1 |
+| قراءة_وكتابة_تحكم_فوري | csrrwi | rd، csr، uimm5 |
+| قراءة_وضبط_تحكم_فوري | csrrsi | rd، csr، uimm5 |
+| قراءة_ومسح_تحكم_فوري | csrrci | rd، csr، uimm5 |
+| قراءة_تحكم | csrr (pseudo) | rd، csr |
+| كتابة_تحكم / ضبط_تحكم / مسح_تحكم | csrw / csrs / csrc (pseudo) | csr، rs1 |
+| كتابة_تحكم_فوري / ضبط_تحكم_فوري / مسح_تحكم_فوري | csrwi / csrsi / csrci (pseudo) | csr، uimm5 |
+| عودة_من_الآلة | mret | — |
+| عودة_من_المشرف | sret | — |
+| انتظار_مقاطعة | wfi | — |
+| سياج_الترجمة | sfence.vma | nothing, or rs1، rs2 |
+
+A `csr` operand is one of the names below, or a constant from ٠ to ٥٩٠٤ (4095). `uimm5` is a constant from ٠ to ١٣ (31).
+
+| Name | GNU | Number |
+|---|---|---|
+| حالة_المشرف | sstatus | 0x100 |
+| تمكين_مقاطعات_المشرف | sie | 0x104 |
+| متجه_فخ_المشرف | stvec | 0x105 |
+| تمكين_عدادات_المشرف | scounteren | 0x106 |
+| مسودة_المشرف | sscratch | 0x140 |
+| عنوان_استثناء_المشرف | sepc | 0x141 |
+| سبب_فخ_المشرف | scause | 0x142 |
+| قيمة_فخ_المشرف | stval | 0x143 |
+| مقاطعات_المشرف_المعلقة | sip | 0x144 |
+| جدول_الصفحات | satp | 0x180 |
+| حالة_الآلة | mstatus | 0x300 |
+| امتدادات_الآلة | misa | 0x301 |
+| تفويض_استثناءات_الآلة | medeleg | 0x302 |
+| تفويض_مقاطعات_الآلة | mideleg | 0x303 |
+| تمكين_مقاطعات_الآلة | mie | 0x304 |
+| متجه_فخ_الآلة | mtvec | 0x305 |
+| تمكين_عدادات_الآلة | mcounteren | 0x306 |
+| بيئة_الآلة | menvcfg | 0x30A |
+| مسودة_الآلة | mscratch | 0x340 |
+| عنوان_استثناء_الآلة | mepc | 0x341 |
+| سبب_فخ_الآلة | mcause | 0x342 |
+| قيمة_فخ_الآلة | mtval | 0x343 |
+| مقاطعات_الآلة_المعلقة | mip | 0x344 |
+| إعداد_الحماية٠ | pmpcfg0 | 0x3A0 |
+| عنوان_الحماية٠ | pmpaddr0 | 0x3B0 |
+| الدورات | cycle | 0xC00 |
+| الوقت | time | 0xC01 |
+| رقم_الخيط | mhartid | 0xF14 |
+
 ## Pseudo-instructions (approved)
 Each expands exactly as GNU as does with `-mno-relax`.
 

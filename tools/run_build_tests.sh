@@ -55,7 +55,7 @@ mkdir -p "$I/اختبار_وحدات"
 cp "$ROOT/tests/cc/وحدات.غرة" "$I/"
 cp "$ROOT/tests/cc/اختبار_وحدات/حساب.غرة" "$I/اختبار_وحدات/"
 rebuilt() { # lists the module objects newer than the marker, sorted
-    find "$I/بناء" -name '*.كائن' ! -name 'تشغيل.كائن' -newer "$I/marker" | sed "s|$I/بناء/||" | sort | tr '\n' ' '
+    find "$I/بناء" -name '*.كائن' ! -name '*.تجميع.كائن' -newer "$I/marker" | sed "s|$I/بناء/||" | sort | tr '\n' ' '
 }
 step() { # step NAME EXPECTED
     sleep 1; touch "$I/marker"; sleep 1
@@ -79,7 +79,7 @@ report "build/incremental/runs" $ok
 # 3. stale object: built against the old interface of اختبار_وحدات.حساب
 ok=1
 DIAG_ORDER=file "$LD" "$OUT/stale" "$OUT/old.وحدات.كائن" "$I/بناء/اختبار_وحدات/حساب.كائن" \
-    "$I/بناء/غرة/نصوص.كائن" "$I/بناء/تشغيل.كائن" 2> "$OUT/stale.stderr"
+    "$I/بناء/غرة/نصوص.كائن" "$I/بناء/تشغيل.تجميع.كائن" 2> "$OUT/stale.stderr"
 [ $? = 1 ] || { echo "  stale: link did not fail"; ok=0; }
 grep -qF "كائن مبني على واجهة قديمة للوحدة: اختبار_وحدات.حساب" "$OUT/stale.stderr" ||
     { echo "  stale: message not found:"; cat "$OUT/stale.stderr"; ok=0; }
@@ -103,7 +103,7 @@ cp "$ROOT/tests/cc/وحدات.غرة" "$B/"
 printf '.شفرة\n.عام غير_مستخدم\nغير_مستخدم:\n    عودة\n' > "$OUT/زائد.تجميع"
 ok=1
 "$ROOT/build/مجمع" "$OUT/زائد.تجميع" "$OUT/زائد.كائن" &&
-"$LIBT" "$OUT/مكتبتي.مكتبة" "$P/بناء/تشغيل.كائن" "$P/بناء/غرة/نصوص.كائن" \
+"$LIBT" "$OUT/مكتبتي.مكتبة" "$P/بناء/تشغيل.تجميع.كائن" "$P/بناء/غرة/نصوص.كائن" \
     "$P/بناء/اختبار_وحدات/حساب.كائن" "$OUT/زائد.كائن" || { echo "  library: محزم failed"; ok=0; }
 [ $ok = 1 ] && { "$CC" "$B/وحدات.غرة" "$OUT/مكتبتي.مكتبة" || { echo "  library: build failed"; ok=0; }; }
 [ $ok = 1 ] && { run_check "$B" وحدات "$B/بناء/وحدات" || ok=0; }

@@ -66,6 +66,14 @@ MNEMONICS = {
     "باقي": "rem", "باقي_بلا_إشارة": "remu", "ضرب_كلمة": "mulw",
     "قسمة_كلمة": "divw", "قسمة_بلا_إشارة_كلمة": "divuw", "باقي_كلمة": "remw",
     "باقي_بلا_إشارة_كلمة": "remuw",
+    # Zicsr and privileged (A64)
+    "قراءة_وكتابة_تحكم": "csrrw", "قراءة_وضبط_تحكم": "csrrs", "قراءة_ومسح_تحكم": "csrrc",
+    "قراءة_وكتابة_تحكم_فوري": "csrrwi", "قراءة_وضبط_تحكم_فوري": "csrrsi",
+    "قراءة_ومسح_تحكم_فوري": "csrrci", "قراءة_تحكم": "csrr", "كتابة_تحكم": "csrw",
+    "ضبط_تحكم": "csrs", "مسح_تحكم": "csrc", "كتابة_تحكم_فوري": "csrwi",
+    "ضبط_تحكم_فوري": "csrsi", "مسح_تحكم_فوري": "csrci",
+    "عودة_من_الآلة": "mret", "عودة_من_المشرف": "sret", "انتظار_مقاطعة": "wfi",
+    "سياج_الترجمة": "sfence.vma",
     # pseudo-instructions
     "حمل_قيمة": "li", "حمل_عنوان": "la", "نسخ": "mv", "نفي": "not",
     "سالب": "neg", "لا_عملية": "nop", "قفز": "j", "قفز_بسجل": "jr",
@@ -75,6 +83,22 @@ MNEMONICS = {
     "تفرع_إذا_أكبر_بلا_إشارة": "bgtu",
     "تفرع_إذا_أصغر_أو_يساوي_بلا_إشارة": "bleu",
 }
+# control and status registers (A64): Arabic name -> GAS name
+CSRS = {
+    "حالة_المشرف": "sstatus", "تمكين_مقاطعات_المشرف": "sie", "متجه_فخ_المشرف": "stvec",
+    "تمكين_عدادات_المشرف": "scounteren", "مسودة_المشرف": "sscratch",
+    "عنوان_استثناء_المشرف": "sepc", "سبب_فخ_المشرف": "scause", "قيمة_فخ_المشرف": "stval",
+    "مقاطعات_المشرف_المعلقة": "sip", "جدول_الصفحات": "satp",
+    "حالة_الآلة": "mstatus", "امتدادات_الآلة": "misa", "تفويض_استثناءات_الآلة": "medeleg",
+    "تفويض_مقاطعات_الآلة": "mideleg", "تمكين_مقاطعات_الآلة": "mie", "متجه_فخ_الآلة": "mtvec",
+    "تمكين_عدادات_الآلة": "mcounteren", "بيئة_الآلة": "menvcfg", "مسودة_الآلة": "mscratch",
+    "عنوان_استثناء_الآلة": "mepc", "سبب_فخ_الآلة": "mcause", "قيمة_فخ_الآلة": "mtval",
+    "مقاطعات_الآلة_المعلقة": "mip", "إعداد_الحماية٠": "pmpcfg0", "عنوان_الحماية٠": "pmpaddr0",
+    "الدورات": "cycle", "الوقت": "time", "رقم_الخيط": "mhartid",
+}
+# instructions whose operand number N is a control and status register
+CSR_OPERAND = {"csrrw": 1, "csrrs": 1, "csrrc": 1, "csrrwi": 1, "csrrsi": 1, "csrrci": 1,
+               "csrr": 1, "csrw": 0, "csrs": 0, "csrc": 0, "csrwi": 0, "csrsi": 0, "csrci": 0}
 # instructions whose LAST operand is a memory operand (reg ± expr)
 MEMORY_OPERAND = {"lb", "lh", "lw", "ld", "lbu", "lhu", "lwu",
                   "sb", "sh", "sw", "sd", "jalr"}
@@ -322,6 +346,10 @@ def translate_line(line):
         texts = [expr_text(o) for o in ops]
         if gas in MEMORY_OPERAND and ops:
             texts[-1] = memory_operand(ops[-1])
+        k = CSR_OPERAND.get(gas)
+        if k is not None and k < len(ops) and len(ops[k]) == 1 and ops[k][0][0] == "id" \
+                and ops[k][0][1] in CSRS:
+            texts[k] = CSRS[ops[k][0][1]]
         out.append(gas + (" " + ", ".join(texts) if texts else ""))
     else:
         raise TranslitError(f"unknown instruction or directive {head}")

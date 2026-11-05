@@ -17,6 +17,12 @@ typedef enum {
     FMT_LUI,      /* rd، imm20 */
     FMT_AUIPC,    /* rd، imm20 */
     FMT_FIXED,    /* no operands, fixed encoding */
+    FMT_CSR,      /* rd، csr، rs1        (Zicsr, A64) */
+    FMT_CSRI,     /* rd، csr، uimm5 */
+    FMT_CSR_READ, /* rd، csr             csrr = csrrs rd، csr، صفر */
+    FMT_CSR_WRITE,/* csr، rs1            csrw/csrs/csrc = csrrX صفر، csr، rs1 */
+    FMT_CSRI_WRITE,/* csr، uimm5         csrwi/csrsi/csrci */
+    FMT_SFENCE,   /* [rs1، rs2]          sfence.vma */
     FMT_PSEUDO    /* pseudo-instruction: see PseudoKind */
 } InsnFormat;
 
@@ -56,6 +62,9 @@ const InsnDef *find_insn(const uint8_t *name, size_t len);
 /* Register number 0..31, -1 if the name is not register-shaped,
  * -2 if register-shaped but out of range (e.g. وسيط٩). */
 int find_register(const uint8_t *name, size_t len);
+
+/* Number of a control and status register by its Arabic name, -1 if none. */
+int find_csr(const uint8_t *name, size_t len);
 
 typedef enum {
     DIR_NONE,

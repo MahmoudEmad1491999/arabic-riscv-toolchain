@@ -21,7 +21,7 @@ for src in "$OUT"/os/*.غرة; do
     name=$(basename "$src" .غرة)
     [ -f "$ROOT/tests/os/$name.out" ] || continue
     ok=1
-    (cd "$OUT/os" && DIAG_ORDER=file "$CC" "$name.غرة" --عاري بدء.تجميع) > "$OUT/$name.build" 2>&1 ||
+    (cd "$OUT/os" && DIAG_ORDER=file "$CC" "$name.غرة" --عاري بدء.تجميع معالج.تجميع) > "$OUT/$name.build" 2>&1 ||
         { echo "  $name: build failed"; sed 's/^/    /' "$OUT/$name.build" | head -5; ok=0; }
     if [ $ok = 1 ]; then
         timeout 30 "$QEMU" -machine virt -bios none -m 128M -nographic -monitor none \

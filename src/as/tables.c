@@ -95,6 +95,25 @@ static const InsnDef insns[] = {
     {"نداء_البيئة",  FMT_FIXED, 0x00000073u, 0, 0, 0, P_NONE},
     {"نقطة_توقف",    FMT_FIXED, 0x00100073u, 0, 0, 0, P_NONE},
 
+    /* Zicsr and the privileged instructions (A64) */
+    {"قراءة_وكتابة_تحكم",        FMT_CSR,  0x73u, 1, 0, 0, P_NONE},
+    {"قراءة_وضبط_تحكم",          FMT_CSR,  0x73u, 2, 0, 0, P_NONE},
+    {"قراءة_ومسح_تحكم",          FMT_CSR,  0x73u, 3, 0, 0, P_NONE},
+    {"قراءة_وكتابة_تحكم_فوري",   FMT_CSRI, 0x73u, 5, 0, 0, P_NONE},
+    {"قراءة_وضبط_تحكم_فوري",     FMT_CSRI, 0x73u, 6, 0, 0, P_NONE},
+    {"قراءة_ومسح_تحكم_فوري",     FMT_CSRI, 0x73u, 7, 0, 0, P_NONE},
+    {"قراءة_تحكم",               FMT_CSR_READ,   0x73u, 2, 0, 0, P_NONE},
+    {"كتابة_تحكم",               FMT_CSR_WRITE,  0x73u, 1, 0, 0, P_NONE},
+    {"ضبط_تحكم",                 FMT_CSR_WRITE,  0x73u, 2, 0, 0, P_NONE},
+    {"مسح_تحكم",                 FMT_CSR_WRITE,  0x73u, 3, 0, 0, P_NONE},
+    {"كتابة_تحكم_فوري",          FMT_CSRI_WRITE, 0x73u, 5, 0, 0, P_NONE},
+    {"ضبط_تحكم_فوري",            FMT_CSRI_WRITE, 0x73u, 6, 0, 0, P_NONE},
+    {"مسح_تحكم_فوري",            FMT_CSRI_WRITE, 0x73u, 7, 0, 0, P_NONE},
+    {"عودة_من_الآلة",            FMT_FIXED, 0x30200073u, 0, 0, 0, P_NONE},
+    {"عودة_من_المشرف",           FMT_FIXED, 0x10200073u, 0, 0, 0, P_NONE},
+    {"انتظار_مقاطعة",            FMT_FIXED, 0x10500073u, 0, 0, 0, P_NONE},
+    {"سياج_الترجمة",             FMT_SFENCE, 0x12000073u, 0, 0, 0, P_NONE},
+
     /* pseudo-instructions (approved names) */
     {"حمل_قيمة",       FMT_PSEUDO, 0, 0, 0, 0, P_LI},
     {"حمل_عنوان",      FMT_PSEUDO, 0, 0, 0, 0, P_LA},
@@ -191,6 +210,42 @@ static int suffix_number(const uint8_t *s, size_t len)
         return -1;
     }
     return value;
+}
+
+/* Control and status registers by name (A64). Any other one can
+ * be written as a number, ٠ to ٥٩٠٤ in file order. */
+typedef struct {
+    const char *name;
+    int number;
+} CsrName;
+
+static const CsrName csrs[] = {
+    {"حالة_المشرف", 0x100},              {"تمكين_مقاطعات_المشرف", 0x104},
+    {"متجه_فخ_المشرف", 0x105},           {"تمكين_عدادات_المشرف", 0x106},
+    {"مسودة_المشرف", 0x140},             {"عنوان_استثناء_المشرف", 0x141},
+    {"سبب_فخ_المشرف", 0x142},            {"قيمة_فخ_المشرف", 0x143},
+    {"مقاطعات_المشرف_المعلقة", 0x144},   {"جدول_الصفحات", 0x180},
+    {"حالة_الآلة", 0x300},               {"امتدادات_الآلة", 0x301},
+    {"تفويض_استثناءات_الآلة", 0x302},    {"تفويض_مقاطعات_الآلة", 0x303},
+    {"تمكين_مقاطعات_الآلة", 0x304},      {"متجه_فخ_الآلة", 0x305},
+    {"تمكين_عدادات_الآلة", 0x306},       {"بيئة_الآلة", 0x30A},
+    {"مسودة_الآلة", 0x340},              {"عنوان_استثناء_الآلة", 0x341},
+    {"سبب_فخ_الآلة", 0x342},             {"قيمة_فخ_الآلة", 0x343},
+    {"مقاطعات_الآلة_المعلقة", 0x344},
+    {"إعداد_الحماية٠", 0x3A0},           {"عنوان_الحماية٠", 0x3B0},
+    {"الدورات", 0xC00},                  {"الوقت", 0xC01},
+    {"رقم_الخيط", 0xF14},
+};
+
+int find_csr(const uint8_t *name, size_t len)
+{
+    size_t i;
+    for (i = 0; i < sizeof csrs / sizeof csrs[0]; i++) {
+        if (name_eq(name, len, csrs[i].name)) {
+            return csrs[i].number;
+        }
+    }
+    return -1;
 }
 
 int find_register(const uint8_t *name, size_t len)

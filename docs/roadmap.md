@@ -61,7 +61,7 @@
 ## Phase 5 status (operating system)
 
 - [x] Stage 1: bare-metal link layout (`--عاري`), `متطاير` (decision 41), our own start code with no firmware, UART driver and power-off device in غرة, `مرحبا من نظام غرة` on QEMU, language stops on the UART, `make os`
-- [ ] Stage 2: CSR instructions in `مجمع`, machine-mode traps and the timer interrupt in غرة, entry into supervisor mode
+- [x] Stage 2: CSR and privileged instructions in `مجمع` (compared with GNU as), our machine-mode layer in غرة (protection, delegation, timer), entry into supervisor mode, trap entry/exit in assembly with the handlers in غرة, timer ticks, exceptions reported in Arabic
 - [ ] Stage 3: physical page allocator, Sv39 paging
 - [ ] Stage 4: user mode, system calls (`نظام`), processes, scheduler
 - [ ] Stage 5: virtio-blk driver, a simple file system

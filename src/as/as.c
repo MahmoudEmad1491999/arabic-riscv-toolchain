@@ -415,6 +415,59 @@ static int parse_reg(Assembler *as, uint32_t *r)
     return 0;
 }
 
+/* A control and status register: its name, or a constant 0..4095. */
+static int parse_csr(Assembler *as, uint32_t *csr)
+{
+    Token *t = tok(as);
+    Value v;
+    int n;
+    if (t->kind == T_IDENT && (n = find_csr(t->text, t->text_len)) >= 0) {
+        *csr = (uint32_t)n;
+        advance(as);
+        return 0;
+    }
+    if (parse_operand(as, &v) != 0) {
+        return -1;
+    }
+    *csr = 0;
+    if (as->pass == 2) {
+        if (v.sym != NULL || v.reloc != RELOC_NONE) {
+            return error_tok(t, D_EXPECTED_CSR);
+        }
+        if (v.v < 0 || v.v > 4095) {
+            return error_tok(t, D_VALUE_RANGE);
+        }
+        *csr = (uint32_t)v.v;
+    }
+    return 0;
+}
+
+/* A 5-bit unsigned constant (the immediate of the csr*i instructions). */
+static int parse_uimm5(Assembler *as, uint32_t *out)
+{
+    Token *t = tok(as);
+    Value v;
+    if (parse_operand(as, &v) != 0) {
+        return -1;
+    }
+    *out = 0;
+    if (as->pass == 2) {
+        if (v.sym != NULL || v.reloc != RELOC_NONE) {
+            return error_tok(t, D_NOT_CONSTANT);
+        }
+        if (v.v < 0 || v.v > 31) {
+            return error_tok(t, D_VALUE_RANGE);
+        }
+        *out = (uint32_t)v.v;
+    }
+    return 0;
+}
+
+static uint32_t enc_csr(const InsnDef *d, uint32_t rd, uint32_t csr, uint32_t rs1)
+{
+    return (csr << 20) | (rs1 << 15) | (d->funct3 << 12) | (rd << 7) | d->opcode;
+}
+
 /* base ± offset */
 static int parse_mem(Assembler *as, uint32_t *base, Value *off)
 {
@@ -727,6 +780,57 @@ static int insn(Assembler *as, const InsnDef *d)
 
     case FMT_FIXED:
         word = d->opcode;
+        break;
+
+    case FMT_CSR: {
+        uint32_t csr;
+        if (parse_reg(as, &rd) || expect_comma(as) || parse_csr(as, &csr) ||
+            expect_comma(as) || parse_reg(as, &rs1)) {
+            return -1;
+        }
+        word = enc_csr(d, rd, csr, rs1);
+        break;
+    }
+    case FMT_CSRI: {
+        uint32_t csr, imm;
+        if (parse_reg(as, &rd) || expect_comma(as) || parse_csr(as, &csr) ||
+            expect_comma(as) || parse_uimm5(as, &imm)) {
+            return -1;
+        }
+        word = enc_csr(d, rd, csr, imm);
+        break;
+    }
+    case FMT_CSR_READ: {
+        uint32_t csr;
+        if (parse_reg(as, &rd) || expect_comma(as) || parse_csr(as, &csr)) {
+            return -1;
+        }
+        word = enc_csr(d, rd, csr, 0);
+        break;
+    }
+    case FMT_CSR_WRITE: {
+        uint32_t csr;
+        if (parse_csr(as, &csr) || expect_comma(as) || parse_reg(as, &rs1)) {
+            return -1;
+        }
+        word = enc_csr(d, 0, csr, rs1);
+        break;
+    }
+    case FMT_CSRI_WRITE: {
+        uint32_t csr, imm;
+        if (parse_csr(as, &csr) || expect_comma(as) || parse_uimm5(as, &imm)) {
+            return -1;
+        }
+        word = enc_csr(d, 0, csr, imm);
+        break;
+    }
+    case FMT_SFENCE:
+        /* no operands: every address, every address space */
+        if (tok(as)->kind != T_NEWLINE &&
+            (parse_reg(as, &rs1) || expect_comma(as) || parse_reg(as, &rs2))) {
+            return -1;
+        }
+        word = d->opcode | (rs2 << 20) | (rs1 << 15);
         break;
 
     case FMT_PSEUDO:
