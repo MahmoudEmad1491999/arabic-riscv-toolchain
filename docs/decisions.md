@@ -60,3 +60,10 @@ Decisions made by the project owner. Newest last.
 53. Executables use our object format too (one container, like ELF's ET_REL/ET_EXEC): a header flag marks an executable; its sections sit at fixed addresses (code at `0x10000`, read-only data after it, data from the next page, zeroed data after that); the entry point is the exported symbol `_بداية`; the only symbols left unresolved are imports of the system interface, which the loader binds (decision 43). The kernel image stays ELF because QEMU loads ELF.
 54. Programs live on the disk, put there by `مهيئ`; the kernel loads them by name from the file system. Nothing is embedded in the kernel image any more.
 55. The shell is called **بوابة** (the gateway): it runs programs by name and has a few built-in commands; it reads the keyboard through the serial port.
+56. Phase 6 ports the tools in this order: assembler, linker, compiler. A ported tool must give byte-identical output to the C tool on every test before the next port starts.
+57. The port is a faithful translation: the same modules, functions and algorithms as the C code, file for file. Improvements wait until stage 2 and stage 3 are byte-identical.
+58. The ported tools reach the system only through one library module, **`غرة.منصة`** (the platform), with two back ends: Linux (system calls in `lib/runtime`) and our OS (the `_نظام_` imports). The tools run on both (docs/spec-platform.md).
+59. غرة programs get memory only from arenas: blocks of fresh memory taken from the platform, released a whole arena at a time. A growing buffer moves to a bigger block.
+60. On our OS, fresh memory comes from the system call **`احجز`**: the kernel maps zeroed pages in a heap region of the process and returns their address (like mmap).
+61. Our file system gets real subdirectories.
+62. `شغل` takes the program's arguments: the kernel copies them onto the new process's stack the way Linux does, so both back ends start a program the same way. `بوابة` splits the typed line on spaces.
