@@ -4,6 +4,8 @@
 #   2. the kernel, a bare-metal image;
 #   3. the disk image بناء/قرص.صورة with the programs and the files in
 #      os/ملفات (decision 54), made by مهيئ.
+# Programs find the user library in os/مستخدم and the standard library
+# (غرة.منصة, غرة.نصوص) in lib/; the start file comes from os/مستخدم.
 #   tools/build_os.sh [OS_DIR [ROOT.غرة]]     (default: os/ and نواة.غرة)
 # Run it: see docs/spec-os.md, "Running it".
 set -eu
@@ -14,7 +16,7 @@ OSD=${1:-$ROOT/os}
 KERNEL=${2:-نواة.غرة}
 cd "$OSD"
 for program in برامج/*.غرة; do
-    "$CC" "$program" مستخدم --برنامج
+    "$CC" "$program" مستخدم "$ROOT/lib" --برنامج
 done
 "$CC" "$KERNEL" --عاري بدء.تجميع معالج.تجميع
 files=$(for program in برامج/*.غرة; do

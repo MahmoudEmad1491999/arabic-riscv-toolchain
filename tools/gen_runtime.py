@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Writes lib/runtime/تشغيل.تجميع, the runtime of غرة programs, in Arabic
-assembly. Numbers are converted to file order here, and the stop messages
+"""Writes the two start files of غرة programs, in Arabic assembly:
+lib/runtime/تشغيل.تجميع (Linux) and os/مستخدم/runtime/تشغيل.تجميع (our OS).
+Both start a program the same way (the kernel builds a Linux-style stack,
+decision 62). Numbers are converted to file order here, and the stop messages
 are stored reversed (display order) so a plain left-to-right terminal shows
 them correctly (assumption A18).
 
@@ -11,6 +13,10 @@ platform library غرة.منصة (docs/spec-platform.md: _غرة_افتح, _غر
 _غرة_اكتب_في, _غرة_أغلق, _غرة_اجعل_تنفيذيا, _غرة_أنشئ_دليل, _غرة_احجز,
 _غرة_البيئة), and the run-time stops _غرة_خارج_الحدود,
 _غرة_تحويل_فاشل, _غرة_فيض (message on stderr, exit code 101).
+The OS start file has the same _بداية and _غرة_انسخ; its platform
+primitives and stops call the system interface (the _نظام_ imports, bound by
+the loader), and its stop messages are in file order, as the serial console
+shows bytes as they are.
 Usage: tools/gen_runtime.py
 """
 import os
@@ -37,15 +43,7 @@ def disp(s):
     return s[::-1]
 
 
-def main():
-    L = []
-    a = L.append
-    a("# مكتبة التشغيل لغرة: نقطة البداية والنسخ والكتابة والتوقف")
-    a("# رسائل التوقف مخزنة معكوسة لتظهر صحيحة على طرفية بلا اتجاه ثنائي")
-    a(".شفرة")
-    a(".عام _بداية، _غرة_انسخ، _غرة_اكتب، _غرة_اخرج، " + "، ".join(s for s, _ in STOPS))
-    a(".عام " + "، ".join(PLATFORM))
-    a("")
+def start(a):
     a("# _بداية: يبني شريحة الوسائط ويستدعي رئيسية ثم يخرج بقيمتها")
     a("_بداية:")
     a("    حمل_كلمة_مزدوجة محفوظ١، مؤشر_المكدس")
@@ -83,9 +81,9 @@ def main():
     a("    نسخ وسيط٠، محفوظ٣")
     a("    نسخ وسيط١، محفوظ١")
     a("    استدعاء رئيسية")
-    a(f"    حمل_قيمة وسيط٧، {n(93)}")
-    a("    نداء_البيئة")
-    a("")
+
+
+def copy(a):
     a("# _غرة_انسخ: ينسخ وسيط٢ بايتا من وسيط١ إلى وسيط٠")
     a("_غرة_انسخ:")
     a(f"    تفرع_إذا_صفر وسيط٢، {n(2)}ق")
@@ -99,6 +97,29 @@ def main():
     a(f"{n(2)}:")
     a("    عودة")
     a("")
+
+
+OS_MSGS = {
+    "رسالة_الحدود": "توقف: فهرس خارج الحدود",
+    "رسالة_التحويل": "توقف: تحويل فاشل",
+    "رسالة_الفيض": "توقف: فيض",
+}
+
+
+def linux():
+    L = []
+    a = L.append
+    a("# مكتبة التشغيل لغرة: نقطة البداية والنسخ والكتابة والتوقف")
+    a("# رسائل التوقف مخزنة معكوسة لتظهر صحيحة على طرفية بلا اتجاه ثنائي")
+    a(".شفرة")
+    a(".عام _بداية، _غرة_انسخ، _غرة_اكتب، _غرة_اخرج، " + "، ".join(s for s, _ in STOPS))
+    a(".عام " + "، ".join(PLATFORM))
+    a("")
+    start(a)
+    a(f"    حمل_قيمة وسيط٧، {n(93)}")
+    a("    نداء_البيئة")
+    a("")
+    copy(a)
     a("# _غرة_اكتب: الملف في وسيط٠، الشريحة في وسيط١ و وسيط٢")
     a("_غرة_اكتب:")
     a(f"    حمل_قيمة وسيط٧، {n(64)}")
@@ -201,9 +222,71 @@ def main():
     a(".بيانات_للقراءة")
     for name, text in MSGS.items():
         a(f"{name}: .سلسلة \"{disp(text)}\\س\"")
+    return L
+
+
+def osfile():
+    L = []
+    a = L.append
+    a("# بداية برامج المستخدم في نظام غرة، ومنصة غرة.منصة عليه )docs/spec-platform.md(.")
+    a("# نداءات النظام ليست هنا: _نظام_س استيرادات يربطها المحمل بصفحة النظام")
+    a("# )قرارات ٣٤، ٣٥(. رسائل التوقف بترتيب الملف: الطرفية التسلسلية تظهرها كما هي.")
+    a(".شفرة")
+    a(".عام _بداية، _غرة_انسخ، _غرة_اكتب، _غرة_اخرج، " + "، ".join(s for s, _ in STOPS))
+    a(".عام " + "، ".join(PLATFORM))
+    a("")
+    start(a)
+    a("    استدعاء _نظام_اخرج")
+    a("")
+    copy(a)
+    a("# _غرة_اكتب: الملف في وسيط٠ )الطرفية للمخرج والخطأ(، والشريحة بعده")
+    a("_غرة_اكتب:")
+    a("    نسخ وسيط٠، وسيط١")
+    a("    نسخ وسيط١، وسيط٢")
+    a("    استدعاء_أخير _نظام_اكتب")
+    a("")
+    for prim, call in (("_غرة_اخرج", "_نظام_اخرج"), ("_غرة_افتح", "_نظام_افتح"), ("_غرة_اقرأ", "_نظام_اقرأ"),
+                       ("_غرة_اكتب_في", "_نظام_اكتب_في"), ("_غرة_أغلق", "_نظام_أغلق"),
+                       ("_غرة_أنشئ_دليل", "_نظام_أنشئ_دليل"), ("_غرة_احجز", "_نظام_احجز")):
+        a(f"{prim}:")
+        a(f"    استدعاء_أخير {call}")
+        a("")
+    a("# لا صلاحيات تنفيذ في نظام ملفاتنا: لا شيء يفعل")
+    a("_غرة_اجعل_تنفيذيا:")
+    a(f"    حمل_قيمة وسيط٠، {n(0)}")
+    a("    عودة")
+    a("")
+    a("# البيئة: قائمة فارغة وضعتها النواة بعد الوسائط")
+    a("_غرة_البيئة:")
+    a("    حمل_عنوان مؤقت٠، البيئة_المحفوظة")
+    a("    حمل_كلمة_مزدوجة وسيط٠، مؤقت٠")
+    a("    عودة")
+    a("")
+    for sym, msg in STOPS:
+        a(f"{sym}:")
+        a(f"    حمل_عنوان وسيط٠، {msg}")
+        a(f"    حمل_قيمة وسيط١، {n(len((OS_MSGS[msg] + chr(10)).encode()))}")
+        a(f"    قفز توقف")
+    a("توقف:")
+    a("    استدعاء _نظام_اكتب")
+    a(f"    حمل_قيمة وسيط٠، {n(101)}")
+    a("    استدعاء _نظام_اخرج")
+    a("")
+    a(".بيانات")
+    a(f".محاذاة {n(3)}")
+    a(f"البيئة_المحفوظة: .كلمة_مزدوجة {n(0)}")
+    a("")
+    a(".بيانات_للقراءة")
+    for name, text in OS_MSGS.items():
+        a(f"{name}: .سلسلة \"{text}\\س\"")
+    return L
+
+
+def main():
     root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-    with open(os.path.join(root, "lib", "runtime", "تشغيل.تجميع"), "w", encoding="utf-8") as f:
-        f.write("\n".join(L) + "\n")
+    for parts, lines in ((("lib", "runtime"), linux()), (("os", "مستخدم", "runtime"), osfile())):
+        with open(os.path.join(root, *parts, "تشغيل.تجميع"), "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
 
 
 if __name__ == "__main__":

@@ -69,8 +69,8 @@
 
 ## Phase 6 status (bootstrap)
 
-- [ ] `غرة.منصة` with the Linux back end: files, directories, arguments, environment, memory, arenas (docs/spec-platform.md)
-- [ ] OS stage 7, what the tools need on our OS: `احجز`, arguments through `شغل`, subdirectories, the OS back end of `غرة.منصة`
+- [x] `غرة.منصة` with the Linux back end: files, directories, arguments, environment, memory, arenas (docs/spec-platform.md)
+- [x] OS stage 7, what the tools need on our OS: `احجز` and a heap, arguments through `شغل` (and in `بوابة`, plus `صدى`), subdirectories (file system version 2, `مهيئ` paths), a 4 MiB loader buffer, the OS back end of `غرة.منصة` (`تجربة_المنصة` runs on the OS)
 - [ ] `src/common` in غرة: UTF-8, characters, numbers, buffers, diagnostics, object formats
 - [ ] Assembler in غرة, byte-identical to `مجمع` on every test
 - [ ] Linker in غرة, byte-identical to `رابط` on every test
