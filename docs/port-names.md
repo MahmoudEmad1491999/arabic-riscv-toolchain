@@ -19,9 +19,11 @@ The port is a faithful translation (decision 57): every C module has a غرة mo
 | `src/as/tables.c` | `مصدر/التجميع/جداول.غرة` | `التجميع.جداول` |
 | `src/as/as.c` | `مصدر/التجميع/مجمع.غرة` | `التجميع.مجمع` |
 | `src/as/main.c` | `مصدر/مجمع.غرة` | the program `مجمع` |
+| `src/ld/ld.c` | `مصدر/الربط/رابط.غرة` | `الربط.رابط` |
+| `src/ld/main.c` | `مصدر/رابط.غرة` | the program `رابط` |
 | `src/lib/main.c` | `مصدر/محزم.غرة` | the program `محزم` |
 
-A tool's main file sits in `مصدر/` and is named after the tool, so `مصدر/` is its root and `مشترك.…` resolves there: `مترجم مصدر/عارض.غرة lib` builds `مصدر/بناء/عارض`. A tool's own modules go in a directory named with the verbal noun (`التجميع/` for `مجمع`, later `الربط/` for `رابط` and `الترجمة/` for `مترجم`): a directory with the tool's own name would collide with the executable in `بناء/`.
+A tool's main file sits in `مصدر/` and is named after the tool, so `مصدر/` is its root and `مشترك.…` resolves there: `مترجم مصدر/عارض.غرة lib` builds `مصدر/بناء/عارض`. A tool's own modules go in a directory named with the verbal noun (`التجميع/` for `مجمع`, `الربط/` for `رابط`, later `الترجمة/` for `مترجم`): a directory with the tool's own name would collide with the executable in `بناء/`.
 
 ## Conventions
 

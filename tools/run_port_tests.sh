@@ -10,6 +10,9 @@
 #  3. Every tool ported so far against its C original: same standard output,
 #     standard error and exit code, on every object made below, on damaged
 #     objects, and on the error cases.
+#  5. رابط: the same executables, in all three modes, from the link tests (our
+#     objects and ELF), the compiler tests with the library, an OS program, the
+#     same errors for the error tests, and damaged objects.
 #  4. مجمع: the same object files, in both formats, from every assembly file
 #     of the tests, the OS and the runtimes, from the compiler's output for the
 #     compiler tests, the OS and the ported tools themselves, and the same
@@ -26,7 +29,7 @@ pass=0; fail=0
 report() { if [ "$2" = 1 ]; then pass=$((pass+1)); else echo "FAIL $1"; fail=$((fail+1)); fi; }
 
 # the ported tools, built by our compiler for Linux
-for tool in عارض محزم مجمع; do
+for tool in عارض محزم مجمع رابط; do
     "$CC" "$ROOT/مصدر/$tool.غرة" "$ROOT/lib" > "$OUT/build.log" 2>&1 || { cat "$OUT/build.log"; echo "FAIL build مصدر/$tool"; exit 1; }
 done
 VIEW_C="$ROOT/build/عارض"
@@ -179,7 +182,7 @@ for src in "$ROOT"/tests/cc/*.غرة; do
 done
 (cd "$ROOT/os" && "$CC" نواة.غرة "$OUT/asm/os_نواة.تجميع" "$ROOT/lib" 2>/dev/null
  for p in برامج/*.غرة; do "$CC" "$p" "$OUT/asm/os_$(basename "$p" .غرة).تجميع" مستخدم "$ROOT/lib" 2>/dev/null; done)
-for tool in عارض محزم مجمع; do "$CC" "$ROOT/مصدر/$tool.غرة" "$OUT/asm/tool_$tool.تجميع" "$ROOT/lib"; done
+for tool in عارض محزم مجمع رابط; do "$CC" "$ROOT/مصدر/$tool.غرة" "$OUT/asm/tool_$tool.تجميع" "$ROOT/lib"; done
 sources=$(ls "$ROOT"/tests/asm/*.تجميع "$ROOT"/tests/link/*/*.تجميع "$ROOT"/os/*.تجميع "$ROOT"/lib/runtime/*.تجميع \
              "$ROOT"/os/مستخدم/runtime/*.تجميع "$OUT"/asm/*.تجميع)
 nsrc=0
@@ -228,6 +231,84 @@ for path in srcs:
 PY
 for src in $(cat "$OUT/asm_mutants.txt"); do as_same "$src" كائن || ok=0; done
 report "port/مجمع ($nsrc sources × 2 formats, $nerr error tests, $(wc -l < "$OUT/asm_mutants.txt") damaged sources)" $ok
+
+# رابط: the same executables and the same errors
+ok=1
+LD_C="$ROOT/build/رابط"
+LD_G="$ROOT/مصدر/بناء/رابط"
+mkdir -p "$OUT/ld"
+ld_same() {   # ld_same ARGS...: both linkers (output path added first), same file, stdout, stderr, exit
+    m=""; case "${1:-}" in --*) m=$1; shift;; esac
+    "$LD_C" $m "$OUT/ld/c" "$@" > "$OUT/c.out" 2> "$OUT/c.err"; a=$?
+    qemu-riscv64 "$LD_G" $m "$OUT/ld/g" "$@" > "$OUT/g.out" 2> "$OUT/g.err"; b=$?
+    if [ $a = $b ] && cmp -s "$OUT/c.out" "$OUT/g.out" && cmp -s "$OUT/c.err" "$OUT/g.err" &&
+       { [ $a != 0 ] || cmp -s "$OUT/ld/c" "$OUT/ld/g"; }; then
+        rm -f "$OUT/ld/c" "$OUT/ld/g"; nld=$((nld+1))
+        return 0
+    fi
+    echo "  رابط differs on: $m $*: exit $a/$b"; diff "$OUT/c.err" "$OUT/g.err" | head -3
+    return 1
+}
+nld=0
+for order in "" file; do
+    export DIAG_ORDER=$order
+    for d in "$ROOT"/tests/link/*/ "$ROOT"/tests/link-errors/*/; do
+        srcs=$(ls "$d"*.تجميع | LC_ALL=C sort); objs=""; elfs=""
+        for s in $srcs; do
+            b=$OUT/ld/$(basename "$d")_$(basename "$s" .تجميع)
+            "$AS" "$s" "$b.كائن" 2>/dev/null; "$AS" "$s" "$b.o" 2>/dev/null
+            objs="$objs $b.كائن"; elfs="$elfs $b.o"
+        done
+        for mode in "" --عاري --برنامج; do
+            # shellcheck disable=SC2086
+            ld_same $mode $objs || ok=0
+            # shellcheck disable=SC2086
+            ld_same $mode $elfs || ok=0
+        done
+    done
+    for src in "$OUT"/cc/*.غرة; do
+        o="$OUT/cc/بناء/$(basename "$src" .غرة).كائن"
+        [ -f "$o" ] && { ld_same "$o" "$OUT/cc/بناء/تشغيل.تجميع.كائن" "$OUT/objs/مكتبة.مكتبة" || ok=0; }
+    done
+    # shellcheck disable=SC2046
+    ld_same --برنامج $(find "$OUT/os/بناء" -name '*.كائن' | LC_ALL=C sort) || ok=0
+    for tool in مجمع رابط; do   # the ported tools themselves, linked again
+        # shellcheck disable=SC2046
+        ld_same "$ROOT/مصدر/بناء/$tool.كائن" $(cd "$ROOT/مصدر/بناء" && find التجميع الربط مشترك غرة -name '*.كائن' 2>/dev/null |
+            LC_ALL=C sort | sed "s|^|$ROOT/مصدر/بناء/|") "$ROOT/مصدر/بناء/تشغيل.تجميع.كائن" || ok=0
+    done
+    ld_same || ok=0
+    ld_same --برنامج || ok=0
+    ld_same "$OUT/لا_يوجد.كائن" || ok=0
+    ld_same "$OUT/bad.كائن" || ok=0
+    ld_same "$ROOT/README.md" || ok=0
+done
+unset DIAG_ORDER
+"$LD_C" "$OUT/ld/x/y" "$OUT/objs/asm_"*.كائن > /dev/null 2> "$OUT/c.err"; a=$?
+qemu-riscv64 "$LD_G" "$OUT/ld/x/y" "$OUT/objs/asm_"*.كائن > /dev/null 2> "$OUT/g.err"; b=$?
+[ $a = $b ] && cmp -s "$OUT/c.err" "$OUT/g.err" || { echo "  رابط differs on an unwritable output"; ok=0; }
+# damaged objects, our format and ELF: each linked with the runtime
+for f in $(cat "$OUT/mutants.txt"); do ld_same "$f" "$OUT/cc/بناء/تشغيل.تجميع.كائن" || ok=0; done
+python3 -I - "$OUT/ld" "$OUT"/ld/*.o <<'PY' > "$OUT/ld_mutants.txt" || ok=0
+import random, sys
+out, victims = sys.argv[1], sys.argv[2:6]
+rnd = random.Random(7)
+n = 0
+for path in victims:
+    data = bytearray(open(path, 'rb').read())
+    for i in range(40):
+        d = bytearray(data)
+        for _ in range(1 + i % 3):
+            d[rnd.randrange(len(d))] = rnd.randrange(256)
+        if i % 7 == 0:
+            d = d[:rnd.randrange(len(d))]
+        name = '%s/mut%d.o' % (out, n)
+        open(name, 'wb').write(d)
+        print(name)
+        n += 1
+PY
+for f in $(cat "$OUT/ld_mutants.txt"); do ld_same "$f" || ok=0; done
+report "port/رابط ($nld links, $(($(wc -l < "$OUT/mutants.txt") + $(wc -l < "$OUT/ld_mutants.txt"))) damaged objects)" $ok
 
 echo "port tests: $pass passed, $fail failed"
 [ $fail = 0 ]

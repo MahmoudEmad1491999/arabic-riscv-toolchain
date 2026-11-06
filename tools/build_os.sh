@@ -26,7 +26,7 @@ mkdir -p بناء
 cp -r "$ROOT/مصدر" بناء/مصدر
 rm -rf بناء/مصدر/بناء
 tools=""
-for tool in مجمع عارض محزم; do
+for tool in مجمع رابط عارض محزم; do
     "$CC" "بناء/مصدر/$tool.غرة" مستخدم "$ROOT/lib" --برنامج
     tools="$tools أدوات/$tool=بناء/مصدر/بناء/$tool"
 done
