@@ -27,7 +27,7 @@ static const Keyword keywords[] = {
     {"رفع_ب", K_SHL}, {"خفض_ب", K_SHR}, {"باقي", K_REM}, {"مكرر", K_REPEAT},
     {"حول", K_CONVERT}, {"حول_بفحص", K_CONVERT_CHECKED}, {"اقتطع", K_TRUNCATE},
     {"اعتبر", K_REINTERPRET}, {"مقاس", K_SIZEOF}, {"محاذاة", K_ALIGNOF},
-    {"عنصر_بفحص", K_INDEX_CHECKED}, {"شريحة_بفحص", K_SLICE_CHECKED},
+    {"عنصر_بفحص", K_INDEX_CHECKED}, {"شريحة_بفحص", K_SLICE_CHECKED}, {"شريحة_من", K_SLICE_FROM},
     {"جمع_بفحص", K_ADD_CHECKED}, {"طرح_بفحص", K_SUB_CHECKED}, {"ضرب_بفحص", K_MUL_CHECKED},
     {"جمع_مشبع", K_ADD_SAT}, {"طرح_مشبع", K_SUB_SAT}, {"ضرب_مشبع", K_MUL_SAT},
 };

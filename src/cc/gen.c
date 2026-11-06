@@ -1020,6 +1020,13 @@ static void gen_expr(Gen *g, Expr *e)
         case K_SLICE_CHECKED:
             gen_slice(g, e->args[0], e->args[1], e->args[2], 1);
             return;
+        case K_SLICE_FROM:
+            gen_expr(g, e->args[0]);
+            push(g, "وسيط٠");
+            gen_expr(g, e->args[1]);
+            ins(g, "نسخ", "وسيط١", "وسيط٠", NULL);
+            pop(g, "وسيط٠");
+            return;
         default:
             gen_checked_arith(g, e);
             return;

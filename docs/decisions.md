@@ -67,3 +67,4 @@ Decisions made by the project owner. Newest last.
 60. On our OS, fresh memory comes from the system call **`احجز`**: the kernel maps zeroed pages in a heap region of the process and returns their address (like mmap).
 61. Our file system gets real subdirectories.
 62. `شغل` takes the program's arguments: the kernel copies them onto the new process's stack the way Linux does, so both back ends start a program the same way. `بوابة` splits the typed line on spaces.
+63. The language makes a slice from a pointer with the built-in **`شريحة_من)م، ن(`**: `^T` gives `][T`, `^ثابت T` gives `][ثابت T`, a `متطاير` pointer is refused. Outside the language's guarantees, like `اعتبر` (spec-language §3.2, §10).

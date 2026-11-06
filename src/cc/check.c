@@ -869,6 +869,15 @@ static int check_builtin(Ctx *c, Expr *e, Type *want)
         return check_index_like(c, e, e->args[0], e->args[1]);
     case K_SLICE_CHECKED:
         return check_slice_like(c, e, e->args[0], e->args[1], e->args[2]);
+    case K_SLICE_FROM: {
+        /* شريحة_من(pointer, length): decision 63 */
+        Expr *ptr = e->args[0], *len = e->args[1];
+        if (check_expr(c, ptr, NULL) != 0) return -1;
+        if (ptr->type->kind != T_PTR || ptr->type->vol) return err(&ptr->tok, D_CC_SLICE_FROM, NULL);
+        if (check_expr(c, len, ty_size) != 0 || coerce(c, len, ty_size) != 0) return -1;
+        e->type = slice_of(c, ptr->type->elem, ptr->type->readonly);
+        return 0;
+    }
     default: {
         /* checked / saturating arithmetic: two operands of one integer type */
         Expr *a = e->args[0], *b = e->args[1];

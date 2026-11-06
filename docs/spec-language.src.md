@@ -64,6 +64,7 @@ Booleans: `و`، `أو` (short-circuit), `ليس`; the operands must be booleans
 - Slicing: `ش]أ : ب[` covers elements a ≤ i < b. It is not checked at run time; a > b or b > `.طول` is undefined behaviour. The checked form is `شريحة_بفحص)ش، أ، ب(`.
 - An array converts to a slice only explicitly: `م]{{n:0}} : م.طول[`. Arrays never decay to pointers.
 - Array literal: `]{{n:1}}، {{n:2}}، {{n:3}}[`. The count must equal N exactly. To fill all elements with one value, write `]{{n:0}} مكرر[`.
+- **A slice from a pointer (Decided 63):** `شريحة_من)م، ن(` makes the slice of the `ن` elements starting where `م` points. `م` is `^نوع` (the result is `][نوع`) or `^ثابت نوع` (the result is `][ثابت نوع`); a `متطاير` pointer is a compile error. `ن` has type size. It is how memory obtained as an address (an arena, a buffer from the system) becomes a slice: `اعتبر` turns the address into a pointer, `شريحة_من` gives it a length. Like `اعتبر`, it is outside the language's guarantees: nothing checks that `ن` elements are really there (section 10).
 
 ### 3.3 Structures (Decided 30): no hidden padding
 
@@ -301,7 +302,7 @@ The result type is unsigned 8-bit because that is exactly what a Linux exit code
 
 1. Use of memory after it has been freed, or of a pointer to a local variable after its function has returned.
 2. Plain indexing or slicing out of range (`ش]ف[`, `ش]أ : ب[`) at run time. Use `عنصر_بفحص` / `شريحة_بفحص` where you want the check (decision 28).
-3. Anything done through `اعتبر` that produces a pointer to memory that is not a valid object of that type.
+3. Anything done through `اعتبر` that produces a pointer to memory that is not a valid object of that type, and a `شريحة_من` whose elements are not all valid objects of the element type.
 4. Hand-written assembly or foreign code that breaks the ABI.
 
 Nothing else is undefined.

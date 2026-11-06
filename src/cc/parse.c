@@ -387,6 +387,10 @@ static Expr *parse_primary(Parser *p)
         e = new_expr(p, E_BUILTIN, t);
         next(p);
         return parse_args_into(p, e, 3);
+    case K_SLICE_FROM:
+        e = new_expr(p, E_BUILTIN, t);
+        next(p);
+        return parse_args_into(p, e, 2);
     default:
         fail(p, t, D_EXPECTED_EXPR, NULL);
         return NULL;

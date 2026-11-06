@@ -37,7 +37,7 @@ Program arguments are not here: `رئيسية` receives them (spec-language §7)
 - There is no `free` of a single allocation and no `realloc`. A growing buffer takes a new, bigger piece of its arena and copies (the C code's `rt_realloc` becomes this).
 - An arena takes blocks of 1 MiB from `احجز` (a larger request gets a block of its own size). The block starts with a 24-byte header: the next block, the bytes used, the capacity.
 - `حرر_الساحة` does not return memory to the system: its blocks go onto a free list inside the module, and the next arena that needs a block takes a big enough one from there first (zeroed again).
-- An address from `احجز_في` is turned into a typed pointer with `اعتبر)^نوع، عنوان(`. `بايتات_في` makes its slice from a pointer to a very large array, which is the only way to make a slice from an address in غرة today.
+- An address from `احجز_في` is turned into a typed pointer with `اعتبر)^نوع، عنوان(`, and into a slice with `شريحة_من` (decision 63).
 
 ### Paths
 
