@@ -2,7 +2,9 @@
 # Builds the operating system (decision 39):
 #   1. the user programs in os/برامج, in our executable format (decision 53);
 #   2. the kernel, a bare-metal image;
-#   3. the disk image بناء/قرص.صورة with the programs and the files in
+#   3. the toolchain ported to غرة (مصدر/, decision 58), built for our OS: its
+#      tools go on the disk in أدوات/, with an example in أمثلة/;
+#   4. the disk image بناء/قرص.صورة with the programs and the files in
 #      os/ملفات (decision 54), made by مهيئ.
 # Programs find the user library in os/مستخدم and the standard library
 # (غرة.منصة, غرة.نصوص) in lib/; the start file comes from os/مستخدم.
@@ -19,9 +21,18 @@ for program in برامج/*.غرة; do
     "$CC" "$program" مستخدم "$ROOT/lib" --برنامج
 done
 "$CC" "$KERNEL" --عاري بدء.تجميع معالج.تجميع
+rm -rf بناء/مصدر
+mkdir -p بناء
+cp -r "$ROOT/مصدر" بناء/مصدر
+rm -rf بناء/مصدر/بناء
+tools=""
+for tool in مجمع عارض محزم; do
+    "$CC" "بناء/مصدر/$tool.غرة" مستخدم "$ROOT/lib" --برنامج
+    tools="$tools أدوات/$tool=بناء/مصدر/بناء/$tool"
+done
 files=$(for program in برامج/*.غرة; do
             name=$(basename "$program" .غرة)
             printf '%s\n' "برامج/بناء/$name"
         done | LC_ALL=C sort)
 # shellcheck disable=SC2086
-"$FS" بناء/قرص.صورة $files ملفات/*
+"$FS" بناء/قرص.صورة $files ملفات/* $tools "أمثلة/حساب.تجميع=$ROOT/tests/asm/حساب.تجميع"

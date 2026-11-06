@@ -15,9 +15,13 @@ The port is a faithful translation (decision 57): every C module has a غرة mo
 | `src/common/elf.h` | `مصدر/مشترك/إلف.غرة` | `مشترك.إلف` |
 | `src/common/obj.c` | `مصدر/مشترك/كائن.غرة` | `مشترك.كائن` |
 | `src/obj/main.c` | `مصدر/عارض.غرة` | the program `عارض` |
+| `src/as/lexer.c` | `مصدر/التجميع/محلل.غرة` | `التجميع.محلل` |
+| `src/as/tables.c` | `مصدر/التجميع/جداول.غرة` | `التجميع.جداول` |
+| `src/as/as.c` | `مصدر/التجميع/مجمع.غرة` | `التجميع.مجمع` |
+| `src/as/main.c` | `مصدر/مجمع.غرة` | the program `مجمع` |
 | `src/lib/main.c` | `مصدر/محزم.غرة` | the program `محزم` |
 
-A tool's main file sits in `مصدر/` and is named after the tool, so `مصدر/` is its root and `مشترك.…` resolves there: `مترجم مصدر/عارض.غرة lib` builds `مصدر/بناء/عارض`.
+A tool's main file sits in `مصدر/` and is named after the tool, so `مصدر/` is its root and `مشترك.…` resolves there: `مترجم مصدر/عارض.غرة lib` builds `مصدر/بناء/عارض`. A tool's own modules go in a directory named with the verbal noun (`التجميع/` for `مجمع`, later `الربط/` for `رابط` and `الترجمة/` for `مترجم`): a directory with the tool's own name would collide with the executable in `بناء/`.
 
 ## Conventions
 
@@ -28,6 +32,8 @@ A tool's main file sits in `مصدر/` and is named after the tool, so `مصدر
 - **Out-parameters** stay out-parameters (`^نوع`), so call sites read the same.
 - **Comparisons** are written in file order like every غرة file: `أ > ب` is "less than".
 - C `int` flags become `منطقي`; widths follow the C types (`uint32_t` → `طبيعي٢٣`, `size_t` → `حجم`).
+- A `Buf` used as an array of structures becomes a typed list (a slice and a count) that grows from the arena.
+- `int` results of `-1` / `0` that callers chain with `||` become `منطقي` chains with `و`: `if (a() || b()) return -1;` → `إذا ليس )أ)( و ب)(( } ارجع خطأ؛ {`.
 
 ## `src/common/utf8` → `مشترك.ترميز`
 
@@ -263,3 +269,50 @@ Message ids:
 | `obj_is_lib` / `obj_lib_parse` / `obj_lib_member` / `obj_lib_serialize` | `مكتبة_هي` / `افحص_المكتبة` / `عضو_في` / `اكتب_المكتبة` |
 | `obj_dump` | `اعرض` |
 | (new, for a zeroed value) | `منظر_فارغ`، `واجهة_فارغة` |
+
+## `src/as/lexer` → `التجميع.محلل`
+
+| C | غرة |
+|---|---|
+| `TokKind`: `T_EOF`, `T_NEWLINE`, `T_IDENT`, `T_NUMBER`, `T_LOCAL_REF`, `T_STRING`, `T_COMMA`, `T_PLUS`, `T_MINUS`, `T_STAR`, `T_SLASH`, `T_COLON`, `T_OPEN`, `T_CLOSE` | `نوع_مفردة`: `نهاية`، `سطر_جديد`، `اسم`، `عدد`، `مرجع_محلي`، `سلسلة`، `فاصلة`، `زائد`، `ناقص`، `نجمة`، `شرطة`، `نقطتان`، `فتح`، `إغلاق` |
+| `Token` (`kind`, `line`, `col`, `text`, `value`, `base`, `dir`, `square`, `str`) | `مفردة` (`النوع`، `السطر`، `العمود`، `النص`، `القيمة`، `الأساس`، `الاتجاه`، `مربع`، `السلسلة`) |
+| `TokenList` | `][مفردة` |
+| `Lexer`, `peek`, `col_of`, `push`, `error_at`, `skip_line`, `encode_range`, `check_after_word` | `محلل`، `أطل`، `عمود`، `ادفع`، `خطأ_في`، `تجاوز_السطر`، `رمز_المدى`، `افحص_ما_بعد` |
+| `is_ascii_letter`, `is_name_char` | `حرف_لاتيني`، `حرف_اسم` |
+| `lex_number`, `lex_name`, `string_char`, `lex_string`, `lex_char`, `lex_one`, `lex` | `حلل_عددا`، `حلل_اسما`، `حرف_سلسلة`، `حلل_سلسلة`، `حلل_حرفا`، `حلل_واحدة`، `حلل` |
+
+## `src/as/tables` → `التجميع.جداول`
+
+| C | غرة |
+|---|---|
+| `InsnFormat` `FMT_R` … `FMT_PSEUDO` | `صيغة`: `ر`، `فوري`، `إزاحة`، `حمل`، `خزن`، `فرع`، `قفز_وربط`، `قفز_وربط_بسجل`، `علوي`، `علوي_للعداد`، `ثابتة`، `تحكم`، `تحكم_فوري`، `قراءة_تحكم`، `كتابة_تحكم`، `كتابة_تحكم_فوري`، `سياج_الترجمة`، `شبه` |
+| `PseudoKind` `P_NONE` … `P_BLEU` | `شبه`: `بلا`، then the mnemonic of each pseudo-instruction |
+| `InsnDef` (`name`, `fmt`, `opcode`, `funct3`, `funct7`, `shamt_max`, `pseudo`) | `تعليمة` (`الاسم`، `الصيغة`، `الشفرة`، `الوظيفة_الثلاثية`، `الوظيفة_السباعية`، `أقصى_إزاحة`، `الشبه`) |
+| `find_insn`, `find_register`, `find_csr`, `find_directive`, `find_reloc_op`, `name_eq` | `ابحث_عن_تعليمة`، `ابحث_عن_سجل`، `ابحث_عن_سجل_تحكم`، `ابحث_عن_توجيه`، `ابحث_عن_عامل_نقل`، `يساوي_النص` |
+| `DirKind` `DIR_NONE` … `DIR_INCBIN` | `توجيه`: `بلا`، `قسم`، `شفرة`، `بيانات`، `بيانات_للقراءة`، `بيانات_صفرية`، `تصدير` (‎.عام)، `حاذ` (‎.محاذاة)، `بايت`، `نصف_كلمة`، `كلمة`، `كلمة_مزدوجة`، `سلسلة`، `فراغ`، `قيمة_ثابتة` (‎.ثابت)، `تضمين` |
+| `RELOC_NONE`, `RELOC_HI`, `RELOC_LO`, `RELOC_PCREL_HI`, `RELOC_PCREL_LO` | `عامل_نقل`: `بلا`، `عالي`، `أدنى`، `عالي_نسبي`، `أدنى_نسبي` |
+| `suffix_number` | `رقم_اللاحقة` |
+
+## `src/as/as` → `التجميع.مجمع`
+
+| C | غرة |
+|---|---|
+| `SEC_TEXT`, `SEC_DATA`, `SEC_RODATA`, `SEC_BSS`, `SEC_COUNT`, `SEC_ABS`, `SEC_UNDEF` | `قسم_الشفرة`، `قسم_البيانات`، `قسم_الثوابت`، `قسم_الأصفار`، `عدد_الأقسام`، `قسم_مطلق`، `قسم_غير_معرف` |
+| `Symbol` (`name`, `defined`, `section`, `value`, `global`, `is_const`, `referenced`, `elf_index`, `next`) | `رمز` (`الاسم`، `معرف`، `القسم`، `القيمة`، `ظاهر`، `ثابت_القيمة`، `مستعمل`، `الفهرس`، `التالي`) |
+| `Reloc`, `Section`, `LocalCount`, `Assembler` | `نقل`، `قسم`، `عداد_محلي`، `مجمع` |
+| `Value` (`v`, `sym`, `reloc`, `provisional`, `from_char`) | `قيمة` (`العدد`، `الرمز`، `النقل`، `مؤقتة`، `من_حرف`) |
+| `as_init`, `as_set_source`, `as_assemble`, `as_write_elf`, `as_write_obj`, `as_free` | `جديد`، `اضبط_المصدر`، `اجمع`، `اكتب_إلف`، `اكتب_الكائن`، (nothing: the arena) |
+| `hash_name`, `sym_get`, `ascii_dec`, `local_count`, `local_symbol` | `بصمة_الاسم`، `رمز_بالاسم`، `عشري_لاتيني`، `عداد_للرقم`، `رمز_محلي` |
+| `tok`, `tok_at`, `advance`, `error_tok`, `error_name`, `expect_comma` | `مفردة_حالية`، `مفردة_بعد`، `تقدم`، `خطأ_عند`، `خطأ_باسم`، `توقع_فاصلة` |
+| `parse_primary`, `parse_unary`, `parse_term`, `parse_expr`, `parse_operand`, `parse_constant` | `حلل_أوليا`، `حلل_أحاديا`، `حلل_حدا`، `حلل_تعبيرا`، `حلل_معاملا`، `حلل_ثابتا` |
+| `cur_sec`, `cur_offset`, `add_reloc`, `in_bss_error` | `القسم_الحالي`، `الإزاحة_الحالية`، `سجل_نقلا`، `ليس_في_الأصفار` |
+| `parse_reg`, `parse_csr`, `parse_uimm5`, `parse_mem` | `حلل_سجلا`، `حلل_سجل_تحكم`، `حلل_فوريا_خماسيا`، `حلل_ذاكرة` |
+| `lo12`, `hi20`, `imm12` | `جزء_منخفض`، `جزء_عال`، `فوري_صغير` |
+| `enc_r`, `enc_i`, `enc_s`, `enc_b`, `enc_j`, `enc_csr`, `enc_imm` | `رمز_ر`، `رمز_ي`، `رمز_خ`، `رمز_ف`، `رمز_ق`، `رمز_تحكم`، `رمز_فوري` |
+| `check_target_symbol`, `branch_word`, `jal_word`, `insn`, `pseudo` | `افحص_رمز_الهدف`، `كلمة_فرع`، `كلمة_قفز`، `تعليمة`، `شبه_تعليمة` |
+| `Words`, `is_sext32`, `load_const`, `li_words`, `fake_label`, `expect_symbol_value` | `كلمات`، `يمتد_من_كلمة`، `حمل_ثابت`، `كلمات_القيمة`، `تسمية_مزيفة`، `توقع_رمزا` |
+| `section_of`, `dir_data`, `dir_string`, `dir_incbin`, `pad_text`, `dir_align`, `dir_zero`, `check_new_name`, `dir_equ`, `dir_global`, `directive` | `قسم_التوجيه`، `توجيه_بيانات`، `توجيه_سلسلة`، `توجيه_تضمين`، `احش_الشفرة`، `توجيه_محاذاة`، `توجيه_فراغ`، `افحص_اسما_جديدا`، `توجيه_ثابت`، `توجيه_عام`، `توجيه` |
+| `define_label`, `is_label_start`, `statement`, `run_pass` | `عرف_تسمية`، `بداية_تسمية`، `جملة`، `مر` |
+| `strtab_add`, `sym_entry`, `shdr`, `emit_symbol`, `is_global_entry` | `أضف_نصا`، `مدخل_رمز`، `رأس_قسم`، `يكتب_الرمز`، `مدخل_عام` |
+| `is_fake_label`, `obj_reloc_kind` | `تسمية_مزيفة_هي`، `نوع_نقل_الكائن` |
+| `main.c`: `line_of_offset`, `wants_obj_format` | `سطر_الموضع`، `يريد_صيغة_الكائن` |

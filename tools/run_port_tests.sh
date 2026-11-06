@@ -10,6 +10,10 @@
 #  3. Every tool ported so far against its C original: same standard output,
 #     standard error and exit code, on every object made below, on damaged
 #     objects, and on the error cases.
+#  4. مجمع: the same object files, in both formats, from every assembly file
+#     of the tests, the OS and the runtimes, from the compiler's output for the
+#     compiler tests, the OS and the ported tools themselves, and the same
+#     errors for the error tests and for damaged assembly sources.
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CC="$ROOT/build/مترجم"
@@ -22,7 +26,7 @@ pass=0; fail=0
 report() { if [ "$2" = 1 ]; then pass=$((pass+1)); else echo "FAIL $1"; fail=$((fail+1)); fi; }
 
 # the ported tools, built by our compiler for Linux
-for tool in عارض محزم; do
+for tool in عارض محزم مجمع; do
     "$CC" "$ROOT/مصدر/$tool.غرة" "$ROOT/lib" > "$OUT/build.log" 2>&1 || { cat "$OUT/build.log"; echo "FAIL build مصدر/$tool"; exit 1; }
 done
 VIEW_C="$ROOT/build/عارض"
@@ -153,6 +157,77 @@ for order in "" file; do
 done
 unset DIAG_ORDER
 report "port/محزم" $ok
+
+# مجمع: the same objects and the same errors
+ok=1
+AS_G="$ROOT/مصدر/بناء/مجمع"
+mkdir -p "$OUT/asm"
+as_same() {   # as_same SOURCE EXT: both assemblers, same output file, stdout, stderr and exit code
+    "$AS" "$1" "$OUT/asm/c.$2" > "$OUT/c.out" 2> "$OUT/c.err"; a=$?
+    qemu-riscv64 "$AS_G" "$1" "$OUT/asm/g.$2" > "$OUT/g.out" 2> "$OUT/g.err"; b=$?
+    if [ $a = $b ] && cmp -s "$OUT/c.out" "$OUT/g.out" && cmp -s "$OUT/c.err" "$OUT/g.err" &&
+       { [ $a != 0 ] || cmp -s "$OUT/asm/c.$2" "$OUT/asm/g.$2"; }; then
+        rm -f "$OUT/asm/c.$2" "$OUT/asm/g.$2"
+        return 0
+    fi
+    echo "  مجمع differs on $1 ($2): exit $a/$b"; diff "$OUT/c.err" "$OUT/g.err" | head -3
+    return 1
+}
+# the compiler's output: the compiler tests, the OS, the ported tools
+for src in "$ROOT"/tests/cc/*.غرة; do
+    "$CC" "$src" "$OUT/asm/cc_$(basename "$src" .غرة).تجميع" "$ROOT/lib" 2>/dev/null
+done
+(cd "$ROOT/os" && "$CC" نواة.غرة "$OUT/asm/os_نواة.تجميع" "$ROOT/lib" 2>/dev/null
+ for p in برامج/*.غرة; do "$CC" "$p" "$OUT/asm/os_$(basename "$p" .غرة).تجميع" مستخدم "$ROOT/lib" 2>/dev/null; done)
+for tool in عارض محزم مجمع; do "$CC" "$ROOT/مصدر/$tool.غرة" "$OUT/asm/tool_$tool.تجميع" "$ROOT/lib"; done
+sources=$(ls "$ROOT"/tests/asm/*.تجميع "$ROOT"/tests/link/*/*.تجميع "$ROOT"/os/*.تجميع "$ROOT"/lib/runtime/*.تجميع \
+             "$ROOT"/os/مستخدم/runtime/*.تجميع "$OUT"/asm/*.تجميع)
+nsrc=0
+for src in $sources; do
+    nsrc=$((nsrc+1))
+    as_same "$src" o || ok=0
+    as_same "$src" كائن || ok=0
+done
+nerr=0
+for order in "" file; do
+    export DIAG_ORDER=$order
+    for src in "$ROOT"/tests/errors/*.تجميع; do nerr=$((nerr+1)); as_same "$src" كائن || ok=0; done
+    "$AS" > "$OUT/c.err" 2>&1; a=$?; qemu-riscv64 "$AS_G" > "$OUT/g.err" 2>&1; b=$?
+    [ $a = $b ] && cmp -s "$OUT/c.err" "$OUT/g.err" || { echo "  مجمع differs on usage"; ok=0; }
+    as_same "$OUT/لا_يوجد.تجميع" o || ok=0
+    "$AS" "$ROOT/tests/asm/حساب.تجميع" "$OUT/لا_دليل/خرج.o" > "$OUT/c.err" 2>&1; a=$?
+    qemu-riscv64 "$AS_G" "$ROOT/tests/asm/حساب.تجميع" "$OUT/لا_دليل/خرج.o" > "$OUT/g.err" 2>&1; b=$?
+    [ $a = $b ] && cmp -s "$OUT/c.err" "$OUT/g.err" || { echo "  مجمع differs on an unwritable output"; ok=0; }
+done
+unset DIAG_ORDER
+# damaged sources: characters deleted, doubled or replaced, lines swapped
+python3 -I - "$OUT/asm" "$ROOT"/tests/asm/*.تجميع <<'PY' > "$OUT/asm_mutants.txt" || ok=0
+import random, sys
+out, srcs = sys.argv[1], sys.argv[2:]
+rnd = random.Random(5)
+pool = list('٠١٢٣٤٥٦٧٨٩،:+-*/)(][ \n"\'ـabc,؛') + ['سجل٩', 'وسيط٠', 'ق', 'م', '.عام', 'عالي:', '٠س']
+n = 0
+for path in srcs:
+    text = open(path, encoding='utf-8').read()
+    for i in range(25):
+        t = list(text)
+        for _ in range(1 + i % 3):
+            k = rnd.randrange(len(t))
+            op = rnd.randrange(3)
+            if op == 0: del t[k]
+            elif op == 1: t.insert(k, t[k])
+            else: t[k] = rnd.choice(pool)
+        t = ''.join(t)
+        if i % 5 == 0:
+            lines = t.split('\n'); a, b = rnd.randrange(len(lines)), rnd.randrange(len(lines))
+            lines[a], lines[b] = lines[b], lines[a]; t = '\n'.join(lines)
+        name = '%s/mut%d.تجميع' % (out, n)
+        open(name, 'w', encoding='utf-8').write(t)
+        print(name)
+        n += 1
+PY
+for src in $(cat "$OUT/asm_mutants.txt"); do as_same "$src" كائن || ok=0; done
+report "port/مجمع ($nsrc sources × 2 formats, $nerr error tests, $(wc -l < "$OUT/asm_mutants.txt") damaged sources)" $ok
 
 echo "port tests: $pass passed, $fail failed"
 [ $fail = 0 ]

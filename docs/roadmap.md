@@ -73,7 +73,7 @@
 - [x] OS stage 7, what the tools need on our OS: `احجز` and a heap, arguments through `شغل` (and in `بوابة`, plus `صدى`), subdirectories (file system version 2, `مهيئ` paths), a 4 MiB loader buffer, the OS back end of `غرة.منصة` (`تجربة_المنصة` runs on the OS)
 - [x] `src/common` in غرة (`مصدر/مشترك`): UTF-8, characters, numbers, buffers, diagnostics, ELF constants, object formats; the unit checks of `test_common.c` pass in غرة, every object and library is read and written back byte for byte, and the diagnostics print exactly what the C ones print (`make port`, docs/port-names.md)
 - [x] The first tools in غرة: `عارض` and `محزم`, identical to the C tools on every object, on damaged objects and on every error
-- [ ] Assembler in غرة, byte-identical to `مجمع` on every test
+- [x] Assembler in غرة (`مصدر/مجمع.غرة`, `مصدر/التجميع/`), byte-identical to `مجمع`: every assembly file of the tests, the OS and the runtimes, the compiler's output for its tests, the OS and the ported tools (it assembles its own 2.6 MB source identically), in both object formats; the same errors on every error test and on damaged sources (`make port`). It also runs on our OS: the boot test assembles a program with `أدوات/مجمع` and shows the object with `أدوات/عارض`, with the same output as on Linux
 - [ ] Linker in غرة, byte-identical to `رابط` on every test
 - [ ] Compiler in غرة, byte-identical to `مترجم` on every test
 - [ ] Stage 2 = stage 3

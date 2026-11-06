@@ -14,7 +14,7 @@ The repository has six top-level parts. Data flows through them in one direction
 | `tests/` | test inputs | One folder per tool, each input stored with its expected result |
 | `tools/` | Python, shell | Test runners, GNU oracles, the OS build, the docs PDF and the diagrams |
 | `docs/` | Markdown, Graphviz | Specs, decisions, assumptions, roadmap, architecture |
-| `مصدر/` | غرة | Phase 6: the toolchain rewritten in غرة, module for module (`مشترك/` = `src/common`; `عارض.غرة`, `محزم.غرة` so far) |
+| `مصدر/` | غرة | Phase 6: the toolchain rewritten in غرة, module for module (`مشترك/` = `src/common`; `التجميع/` + `مجمع.غرة` = `src/as`; `عارض.غرة`, `محزم.غرة`) |
 
 At the top level:
 
