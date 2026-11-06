@@ -71,7 +71,8 @@
 
 - [x] `غرة.منصة` with the Linux back end: files, directories, arguments, environment, memory, arenas (docs/spec-platform.md)
 - [x] OS stage 7, what the tools need on our OS: `احجز` and a heap, arguments through `شغل` (and in `بوابة`, plus `صدى`), subdirectories (file system version 2, `مهيئ` paths), a 4 MiB loader buffer, the OS back end of `غرة.منصة` (`تجربة_المنصة` runs on the OS)
-- [ ] `src/common` in غرة: UTF-8, characters, numbers, buffers, diagnostics, object formats
+- [x] `src/common` in غرة (`مصدر/مشترك`): UTF-8, characters, numbers, buffers, diagnostics, ELF constants, object formats; the unit checks of `test_common.c` pass in غرة, every object and library is read and written back byte for byte, and the diagnostics print exactly what the C ones print (`make port`, docs/port-names.md)
+- [x] The first tools in غرة: `عارض` and `محزم`, identical to the C tools on every object, on damaged objects and on every error
 - [ ] Assembler in غرة, byte-identical to `مجمع` on every test
 - [ ] Linker in غرة, byte-identical to `رابط` on every test
 - [ ] Compiler in غرة, byte-identical to `مترجم` on every test

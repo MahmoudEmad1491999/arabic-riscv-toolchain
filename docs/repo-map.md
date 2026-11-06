@@ -14,6 +14,7 @@ The repository has six top-level parts. Data flows through them in one direction
 | `tests/` | test inputs | One folder per tool, each input stored with its expected result |
 | `tools/` | Python, shell | Test runners, GNU oracles, the OS build, the docs PDF and the diagrams |
 | `docs/` | Markdown, Graphviz | Specs, decisions, assumptions, roadmap, architecture |
+| `مصدر/` | غرة | Phase 6: the toolchain rewritten in غرة, module for module (`مشترك/` = `src/common`; `عارض.غرة`, `محزم.غرة` so far) |
 
 At the top level:
 
@@ -194,6 +195,7 @@ Each test is an input file next to its expected result:
 | `os/` | Whole-system boots on QEMU: the real kernel and small test kernels | `run_os_tests.sh` |
 | `unit/` | `test_common.c`: unit tests for `src/common` | `make unit` |
 | `gen/` | Python generators that produced the large test sets | run by hand |
+| `port/` | Phase 6: the غرة code in `مصدر/` against the C code (unit checks, diagnostics, the ported tools) | `run_port_tests.sh` |
 
 `make test` runs every suite: unit, oracle, asm, link, cc, objfmt, build-mode, os and spec-check.
 
@@ -206,6 +208,7 @@ Each test is an input file next to its expected result:
 | `elfcmp.py`, `execcmp.py`, `run_oracle.sh` | Compare our output with GNU binutils: object contents, and what an executable loads |
 | `diff_fuzz.py` | Random differential fuzzing against GNU binutils (`make fuzz`) |
 | `gen_runtime.py` | Generates both start files (`lib/runtime` for Linux, `os/مستخدم/runtime` for our OS), converting their numbers to file order |
+| `run_port_tests.sh` | Phase 6: compares each ported piece with its C original (`make port`) |
 | `gen_spec.py` | Builds `docs/spec-language.md` from the `.src.md` source, turning number placeholders into file order (`make spec`) |
 | `build_os.sh` | Builds the programs, the kernel and the disk (section 4.3) |
 | `docs_pdf.py` | Markdown → PDF, with Arabic shown exactly as in the editor (`make docs`). This document was made with it |
@@ -224,10 +227,11 @@ The specs are the source of truth. The code follows them.
 | `spec-os.md` | OS design: memory map, traps, processes, system calls, running it |
 | `spec-fs.md` | The disk layout and file system (version 2: subdirectories) |
 | `spec-platform.md` | The platform library `غرة.منصة` and its two back ends |
-| `decisions.md` | Every decision the owner has made (62 so far) |
-| `assumptions.md` | Things assumed until they are decided (A1–A81) |
+| `decisions.md` | Every decision the owner has made (63 so far) |
+| `assumptions.md` | Things assumed until they are decided (A1–A82) |
 | `roadmap.md` | Phases. Phase 5 (the OS) is complete; phase 6, bootstrapping in غرة, has started |
 | `repo-map.md` | This document: every folder and file and how they relate |
+| `port-names.md` | Phase 6 glossary: every C name and its غرة name, and the translation conventions |
 | `architecture.md` + `diagrams/` | Overview, with twelve Graphviz diagrams rendered to SVG and PNG |
 
 ## 8. How everything relates, in one paragraph

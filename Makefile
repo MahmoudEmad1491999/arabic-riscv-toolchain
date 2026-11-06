@@ -19,7 +19,7 @@ FS_BIN     := $(BUILD)/مهيئ
 LIB_BIN    := $(BUILD)/محزم
 OBJ_BIN    := $(BUILD)/عارض
 
-.PHONY: all docs diagrams test unit oracle asm link cc objfmt build-mode os fuzz spec spec-check clean
+.PHONY: all docs diagrams test unit oracle asm link cc objfmt build-mode os port fuzz spec spec-check clean
 
 all: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(OBJ_BIN) $(LIB_BIN) $(FS_BIN) $(BUILD)/test_common
 
@@ -106,7 +106,11 @@ spec-check:
 	python3 -I tools/gen_spec.py docs/spec-language.src.md $(BUILD)/spec-language.md
 	cmp -s $(BUILD)/spec-language.md docs/spec-language.md || { echo "docs/spec-language.md is stale: run make spec"; exit 1; }
 
-test: unit oracle asm link cc objfmt build-mode os spec-check
+# Phase 6: the code in مصدر/ (غرة) against the C code it translates.
+port: $(AS_BIN) $(LD_BIN) $(CC_BIN) $(OBJ_BIN) $(LIB_BIN)
+	./tools/run_port_tests.sh
+
+test: unit oracle asm link cc objfmt build-mode os port spec-check
 
 clean:
 	rm -rf $(BUILD)
