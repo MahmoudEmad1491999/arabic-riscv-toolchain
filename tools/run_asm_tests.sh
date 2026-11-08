@@ -26,7 +26,7 @@ for src in "$ROOT"/tests/asm/*.تجميع; do
     dir=$(dirname "$src")
     ok=1
     python3 -I "$ROOT/tools/translit.py" "$src" "$OUT/$name.ref.s" &&
-    "${PREFIX}as" -march=rv64im_zicsr -mabi=lp64 -mno-relax -I "$ROOT/tests/asm" "$OUT/$name.ref.s" -o "$OUT/$name.ref.o" || { echo "  $name: reference assembly failed"; ok=0; }
+    "${PREFIX}as" -march=rv64imfd_zicsr -mabi=lp64 -mno-relax -I "$ROOT/tests/asm" "$OUT/$name.ref.s" -o "$OUT/$name.ref.o" || { echo "  $name: reference assembly failed"; ok=0; }
     "$AS" "$src" "$OUT/$name.o" || { echo "  $name: مجمع failed"; ok=0; }
     if [ $ok = 1 ]; then
         python3 -I "$ROOT/tools/elfcmp.py" "$OUT/$name.o" "$OUT/$name.ref.o" || ok=0

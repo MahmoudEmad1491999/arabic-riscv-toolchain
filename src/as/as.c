@@ -415,6 +415,49 @@ static int parse_reg(Assembler *as, uint32_t *r)
     return 0;
 }
 
+static int parse_freg(Assembler *as, uint32_t *r)
+{
+    Token *t = tok(as);
+    int n;
+    if (t->kind != T_IDENT) {
+        return error_tok(t, D_EXPECTED_FREGISTER);
+    }
+    n = find_fregister(t->text, t->text_len);
+    if (n == -2) {
+        return error_name(t, D_REGISTER_RANGE);
+    }
+    if (n < 0) {
+        return error_tok(t, D_EXPECTED_FREGISTER);
+    }
+    *r = (uint32_t)n;
+    advance(as);
+    return 0;
+}
+
+/* an integer (X) or floating-point (F) register operand */
+static int parse_reg_kind(Assembler *as, char kind, uint32_t *r)
+{
+    return kind == 'F' ? parse_freg(as, r) : parse_reg(as, r);
+}
+
+/* [، rounding mode]: the default when there is no comma */
+static int parse_rounding(Assembler *as, uint32_t *rm)
+{
+    Token *t;
+    int n;
+    if (tok(as)->kind != T_COMMA) {
+        return 0;
+    }
+    advance(as);
+    t = tok(as);
+    if (t->kind != T_IDENT || (n = find_rounding(t->text, t->text_len)) < 0) {
+        return t->kind == T_IDENT ? error_name(t, D_EXPECTED_ROUNDING) : error_tok(t, D_EXPECTED_ROUNDING);
+    }
+    *rm = (uint32_t)n;
+    advance(as);
+    return 0;
+}
+
 /* A control and status register: its name, or a constant 0..4095. */
 static int parse_csr(Assembler *as, uint32_t *csr)
 {
@@ -831,6 +874,63 @@ static int insn(Assembler *as, const InsnDef *d)
             return -1;
         }
         word = d->opcode | (rs2 << 20) | (rs1 << 15);
+        break;
+
+    case FMT_FP: {
+        /* destination, then the sources; D repeats the previous source */
+        const char *o = d->ops;
+        uint32_t src[2] = {0, 0}, rm = d->funct3;
+        size_t n = 0;
+        if (parse_reg_kind(as, o[0], &rd) != 0) {
+            return -1;
+        }
+        for (o++; *o != 0 && *o != 'R'; o++) {
+            if (*o == 'D') {
+                src[n] = src[n - 1];
+            } else if (expect_comma(as) || parse_reg_kind(as, *o, &src[n])) {
+                return -1;
+            }
+            n++;
+        }
+        if (*o == 'R' && parse_rounding(as, &rm) != 0) {
+            return -1;
+        }
+        word = (d->funct7 << 25) | ((n == 2 ? src[1] : d->rs2) << 20) | (src[0] << 15) |
+               (rm << 12) | (rd << 7) | d->opcode;
+        break;
+    }
+
+    case FMT_FP4: {
+        uint32_t rs3 = 0, rm = d->funct3;
+        if (parse_freg(as, &rd) || expect_comma(as) || parse_freg(as, &rs1) || expect_comma(as) ||
+            parse_freg(as, &rs2) || expect_comma(as) || parse_freg(as, &rs3) || parse_rounding(as, &rm)) {
+            return -1;
+        }
+        word = (rs3 << 27) | (d->funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (rm << 12) |
+               (rd << 7) | d->opcode;
+        break;
+    }
+
+    case FMT_FLOAD:
+        if (parse_freg(as, &rd) || expect_comma(as)) {
+            return -1;
+        }
+        vt = tok(as);
+        if (parse_mem(as, &rs1, &v) || imm12(as, vt, &v, 0, at, &field)) {
+            return -1;
+        }
+        word = enc_i(d, rd, rs1, field);
+        break;
+
+    case FMT_FSTORE:
+        if (parse_freg(as, &rs2) || expect_comma(as)) {
+            return -1;
+        }
+        vt = tok(as);
+        if (parse_mem(as, &rs1, &v) || imm12(as, vt, &v, 1, at, &field)) {
+            return -1;
+        }
+        word = enc_s(d, rs1, rs2, field);
         break;
 
     case FMT_PSEUDO:

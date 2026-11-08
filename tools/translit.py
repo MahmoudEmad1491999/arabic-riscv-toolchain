@@ -26,12 +26,20 @@ REGISTERS_FIXED = {
     "مؤشر_المكدس": "sp",
     "المؤشر_العام": "gp",
     "مؤشر_الخيط": "tp",
+    # rounding modes of the F and D instructions (A83): GAS writes them as operands
+    "أقرب_زوجي": "rne", "نحو_الصفر": "rtz", "للأسفل": "rdn", "للأعلى": "rup",
+    "أقرب_أبعد": "rmm", "حسب_النمط": "dyn",
 }
 REGISTER_FAMILIES = {  # prefix -> (gas prefix, max index)
     "سجل": ("x", 31),
     "مؤقت": ("t", 6),
     "محفوظ": ("s", 11),
     "وسيط": ("a", 7),
+    # floating-point registers (decision 69)
+    "عشري": ("f", 31),
+    "مؤقت_عشري": ("ft", 11),
+    "محفوظ_عشري": ("fs", 11),
+    "وسيط_عشري": ("fa", 7),
 }
 
 MNEMONICS = {
@@ -83,6 +91,35 @@ MNEMONICS = {
     "تفرع_إذا_أكبر_بلا_إشارة": "bgtu",
     "تفرع_إذا_أصغر_أو_يساوي_بلا_إشارة": "bleu",
 }
+# F and D extensions (decision 69): the integer name + _عشري (single) / _مزدوج (double)
+def _float_mnemonics():
+    m = {}
+    for suf, s in (("عشري", "s"), ("مزدوج", "d")):
+        for ar, gas in (("جمع", "fadd"), ("طرح", "fsub"), ("ضرب", "fmul"), ("قسمة", "fdiv"),
+                        ("جذر", "fsqrt"), ("نسخ_الإشارة", "fsgnj"), ("نسخ_عكس_الإشارة", "fsgnjn"),
+                        ("ضرب_الإشارة", "fsgnjx"), ("أصغر", "fmin"), ("أكبر", "fmax"),
+                        ("ضبط_إذا_يساوي", "feq"), ("ضبط_إذا_أصغر", "flt"),
+                        ("ضبط_إذا_أصغر_أو_يساوي", "fle"), ("صنف", "fclass"),
+                        ("نسخ", "fmv"), ("سالب", "fneg"), ("مطلق", "fabs"),
+                        ("ضرب_جمع", "fmadd"), ("ضرب_طرح", "fmsub"),
+                        ("سالب_ضرب_طرح", "fnmsub"), ("سالب_ضرب_جمع", "fnmadd")):
+            m[f"{ar}_{suf}"] = f"{gas}.{s}"
+        w = "w" if s == "s" else "d"
+        m[f"حمل_{suf}"] = f"fl{w}"
+        m[f"خزن_{suf}"] = f"fs{w}"
+        m[f"نسخ_بتات_من_{suf}"] = f"fmv.x.{w}"
+        m[f"نسخ_بتات_إلى_{suf}"] = f"fmv.{w}.x"
+        for ar, g in (("كلمة", "w"), ("كلمة_بلا_إشارة", "wu"), ("كلمة_مزدوجة", "l"),
+                      ("كلمة_مزدوجة_بلا_إشارة", "lu")):
+            m[f"تحويل_{ar}_من_{suf}"] = f"fcvt.{g}.{s}"
+            m[f"تحويل_{suf}_من_{ar}"] = f"fcvt.{s}.{g}"
+    m["تحويل_عشري_من_مزدوج"] = "fcvt.s.d"
+    m["تحويل_مزدوج_من_عشري"] = "fcvt.d.s"
+    return m
+
+
+MNEMONICS.update(_float_mnemonics())
+
 # control and status registers (A64): Arabic name -> GAS name
 CSRS = {
     "حالة_المشرف": "sstatus", "تمكين_مقاطعات_المشرف": "sie", "متجه_فخ_المشرف": "stvec",
@@ -94,13 +131,14 @@ CSRS = {
     "تمكين_عدادات_الآلة": "mcounteren", "بيئة_الآلة": "menvcfg", "مسودة_الآلة": "mscratch",
     "عنوان_استثناء_الآلة": "mepc", "سبب_فخ_الآلة": "mcause", "قيمة_فخ_الآلة": "mtval",
     "مقاطعات_الآلة_المعلقة": "mip", "إعداد_الحماية٠": "pmpcfg0", "عنوان_الحماية٠": "pmpaddr0",
+    "أعلام_العشري": "fflags", "نمط_التقريب": "frm", "تحكم_العشري": "fcsr",
     "الدورات": "cycle", "الوقت": "time", "رقم_الخيط": "mhartid",
 }
 # instructions whose operand number N is a control and status register
 CSR_OPERAND = {"csrrw": 1, "csrrs": 1, "csrrc": 1, "csrrwi": 1, "csrrsi": 1, "csrrci": 1,
                "csrr": 1, "csrw": 0, "csrs": 0, "csrc": 0, "csrwi": 0, "csrsi": 0, "csrci": 0}
 # instructions whose LAST operand is a memory operand (reg ± expr)
-MEMORY_OPERAND = {"lb", "lh", "lw", "ld", "lbu", "lhu", "lwu",
+MEMORY_OPERAND = {"lb", "lh", "lw", "ld", "lbu", "lhu", "lwu", "flw", "fld", "fsw", "fsd",
                   "sb", "sh", "sw", "sd", "jalr"}
 
 SECTIONS = {

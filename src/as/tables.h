@@ -23,6 +23,10 @@ typedef enum {
     FMT_CSR_WRITE,/* csr، rs1            csrw/csrs/csrc = csrrX صفر، csr، rs1 */
     FMT_CSRI_WRITE,/* csr، uimm5         csrwi/csrsi/csrci */
     FMT_SFENCE,   /* [rs1، rs2]          sfence.vma */
+    FMT_FP,       /* F and D (decision 69): operands as in `ops` */
+    FMT_FP4,      /* fused multiply-add: fd، fs1، fs2، fs3 [، rounding] */
+    FMT_FLOAD,    /* fd، rs1 ± imm12 */
+    FMT_FSTORE,   /* fs2، rs1 ± imm12 */
     FMT_PSEUDO    /* pseudo-instruction: see PseudoKind */
 } InsnFormat;
 
@@ -55,6 +59,10 @@ typedef struct {
     uint32_t funct7;    /* FMT_R: funct7; FMT_SHIFT: bits imm[11:...] */
     uint32_t shamt_max; /* FMT_SHIFT only */
     PseudoKind pseudo;  /* FMT_PSEUDO only */
+    uint32_t rs2;       /* FMT_FP with one source: the fixed rs2 field */
+    const char *ops;    /* FMT_FP: destination, then sources: F float register,
+                           X integer register, D the previous source again;
+                           a final R: optional rounding mode, funct3 its default */
 } InsnDef;
 
 const InsnDef *find_insn(const uint8_t *name, size_t len);
@@ -62,6 +70,13 @@ const InsnDef *find_insn(const uint8_t *name, size_t len);
 /* Register number 0..31, -1 if the name is not register-shaped,
  * -2 if register-shaped but out of range (e.g. وسيط٩). */
 int find_register(const uint8_t *name, size_t len);
+
+/* Floating-point register 0..31 (عشري، وسيط_عشري، محفوظ_عشري، مؤقت_عشري),
+ * -1 / -2 as find_register. */
+int find_fregister(const uint8_t *name, size_t len);
+
+/* Rounding mode by name (A79), -1 if none. */
+int find_rounding(const uint8_t *name, size_t len);
 
 /* Number of a control and status register by its Arabic name, -1 if none. */
 int find_csr(const uint8_t *name, size_t len);

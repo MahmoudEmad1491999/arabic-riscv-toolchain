@@ -224,6 +224,35 @@ A `csr` operand is one of the names below, or a constant from ٠ to ٥٩٠٤ (40
 | الوقت | time | 0xC01 |
 | رقم_الخيط | mhartid | 0xF14 |
 
+## F and D extensions (decisions 66, 69)
+
+Every instruction is the integer instruction's name, or a plain description, plus `_عشري` (single precision, `.s`) or `_مزدوج` (double precision, `.d`). The rounding mode is an optional last operand (A83). The tests assemble every one of them byte-identically with GNU as.
+
+Registers:
+
+| Arabic | GAS | Role in the ABI (LP64D) |
+|---|---|---|
+| عشري + 0..31 | f0..f31 | by number |
+| مؤقت_عشري + 0..11 | ft0..ft11 | temporaries |
+| محفوظ_عشري + 0..11 | fs0..fs11 | preserved by the callee |
+| وسيط_عشري + 0..7 | fa0..fa7 | arguments and results |
+
+| Arabic (`_عشري` / `_مزدوج`) | GAS | Operands |
+|---|---|---|
+| `حمل_` / `خزن_` | flw fld / fsw fsd | `عشري، سجل ± إزاحة` |
+| `جمع_` `طرح_` `ضرب_` `قسمة_` | fadd fsub fmul fdiv | `هدف، أ، ب [، تقريب]` |
+| `جذر_` | fsqrt | `هدف، أ [، تقريب]` |
+| `ضرب_جمع_` `ضرب_طرح_` `سالب_ضرب_طرح_` `سالب_ضرب_جمع_` | fmadd fmsub fnmsub fnmadd | `هدف، أ، ب، ج [، تقريب]` |
+| `نسخ_الإشارة_` `نسخ_عكس_الإشارة_` `ضرب_الإشارة_` | fsgnj fsgnjn fsgnjx | `هدف، أ، ب` |
+| `أصغر_` `أكبر_` | fmin fmax | `هدف، أ، ب` |
+| `ضبط_إذا_يساوي_` `ضبط_إذا_أصغر_` `ضبط_إذا_أصغر_أو_يساوي_` | feq flt fle | `سجل، أ، ب` (integer result) |
+| `صنف_` | fclass | `سجل، أ` |
+| `نسخ_بتات_من_` / `نسخ_بتات_إلى_` | fmv.x.w fmv.x.d / fmv.w.x fmv.d.x | `سجل، عشري` / `عشري، سجل` |
+| `تحويل_كلمة_من_` `تحويل_كلمة_بلا_إشارة_من_` `تحويل_كلمة_مزدوجة_من_` `تحويل_كلمة_مزدوجة_بلا_إشارة_من_` | fcvt.w fcvt.wu fcvt.l fcvt.lu (from .s/.d) | `سجل، عشري [، تقريب]` |
+| `تحويل_عشري_من_…` / `تحويل_مزدوج_من_…` (`كلمة`، `كلمة_بلا_إشارة`، `كلمة_مزدوجة`، `كلمة_مزدوجة_بلا_إشارة`) | fcvt.s.w … fcvt.d.lu | `عشري، سجل [، تقريب]` |
+| `تحويل_عشري_من_مزدوج` / `تحويل_مزدوج_من_عشري` | fcvt.s.d / fcvt.d.s | `عشري، عشري [، تقريب]` |
+| `نسخ_` `سالب_` `مطلق_` (pseudo) | fmv fneg fabs | `هدف، أ` |
+
 ## Pseudo-instructions (approved)
 Each expands exactly as GNU as does with `-mno-relax`.
 
