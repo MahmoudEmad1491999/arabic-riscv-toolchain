@@ -26,7 +26,7 @@ mkdir -p بناء
 cp -r "$ROOT/مصدر" بناء/مصدر
 rm -rf بناء/مصدر/بناء
 tools=""
-for tool in مجمع رابط عارض محزم; do
+for tool in مجمع رابط عارض محزم مترجم; do
     "$CC" "بناء/مصدر/$tool.غرة" مستخدم "$ROOT/lib" --برنامج
     tools="$tools أدوات/$tool=بناء/مصدر/بناء/$tool"
 done
@@ -35,4 +35,5 @@ files=$(for program in برامج/*.غرة; do
             printf '%s\n' "برامج/بناء/$name"
         done | LC_ALL=C sort)
 # shellcheck disable=SC2086
-"$FS" بناء/قرص.صورة $files ملفات/* $tools "أمثلة/حساب.تجميع=$ROOT/tests/asm/حساب.تجميع"
+"$FS" بناء/قرص.صورة $files ملفات/* $tools "أمثلة/حساب.تجميع=$ROOT/tests/asm/حساب.تجميع" \
+    "أمثلة/صدى.غرة=برامج/صدى.غرة" $(for f in مستخدم/*.غرة مستخدم/runtime/*; do printf '%s=%s ' "$f" "$f"; done)

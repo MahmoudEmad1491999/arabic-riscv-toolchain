@@ -22,8 +22,17 @@ The port is a faithful translation (decision 57): every C module has a غرة mo
 | `src/ld/ld.c` | `مصدر/الربط/رابط.غرة` | `الربط.رابط` |
 | `src/ld/main.c` | `مصدر/رابط.غرة` | the program `رابط` |
 | `src/lib/main.c` | `مصدر/محزم.غرة` | the program `محزم` |
+| `src/cc/ast.h`, `cc.h` | `مصدر/الترجمة/شجرة.غرة` | `الترجمة.شجرة` |
+| `src/cc/lex.c` | `مصدر/الترجمة/مفردات.غرة` | `الترجمة.مفردات` |
+| `src/cc/types.c` | `مصدر/الترجمة/أنواع.غرة` | `الترجمة.أنواع` |
+| `src/cc/parse.c` | `مصدر/الترجمة/محلل.غرة` | `الترجمة.محلل` |
+| `src/cc/iface.c` | `مصدر/الترجمة/واجهة.غرة` | `الترجمة.واجهة` |
+| `src/cc/check.c` | `مصدر/الترجمة/فاحص.غرة` | `الترجمة.فاحص` |
+| `src/cc/gen.c` | `مصدر/الترجمة/مولد.غرة` | `الترجمة.مولد` |
+| `src/cc/tools.c` | `مصدر/الترجمة/أدوات.غرة` | `الترجمة.أدوات` |
+| `src/cc/main.c` | `مصدر/مترجم.غرة` | the program `مترجم` |
 
-A tool's main file sits in `مصدر/` and is named after the tool, so `مصدر/` is its root and `مشترك.…` resolves there: `مترجم مصدر/عارض.غرة lib` builds `مصدر/بناء/عارض`. A tool's own modules go in a directory named with the verbal noun (`التجميع/` for `مجمع`, `الربط/` for `رابط`, later `الترجمة/` for `مترجم`): a directory with the tool's own name would collide with the executable in `بناء/`.
+A tool's main file sits in `مصدر/` and is named after the tool, so `مصدر/` is its root and `مشترك.…` resolves there: `مترجم مصدر/عارض.غرة lib` builds `مصدر/بناء/عارض`. A tool's own modules go in a directory named with the verbal noun (`التجميع/` for `مجمع`, `الربط/` for `رابط`, `الترجمة/` for `مترجم`): a directory with the tool's own name would collide with the executable in `بناء/`.
 
 ## Conventions
 
@@ -35,6 +44,10 @@ A tool's main file sits in `مصدر/` and is named after the tool, so `مصدر
 - **Comparisons** are written in file order like every غرة file: `أ > ب` is "less than".
 - C `int` flags become `منطقي`; widths follow the C types (`uint32_t` → `طبيعي٢٣`, `size_t` → `حجم`).
 - A `Buf` used as an array of structures becomes a typed list (a slice and a count) that grows from the arena.
+- **Pointers that may be `NULL`** become `اختياري ^نوع`. Where the C code dereferences one it knows is set, the port opens it with a small helper (`شجرة.نو`، `تع`، `تص`، `مح`، `جم`، `نو_و`) that stops the program if it is `لاشيء`.
+- **Arrays of pointers** built while parsing (`List`, a `Buf` of pointers) become `شجرة.قائمة`: addresses that grow in the arena, read back as a typed slice (`شجرة.تعابير`، `جمل`، `تصاريح` …). Arrays of structures in the AST (`Field`, `EnumMember`, `Case`, `Import`) become slices of pointers.
+- **The parser** returns a node even after an error (an empty one); a caller knows a call failed from the error count, exactly where the C code returns `NULL` (every `NULL` there follows a reported error).
+- **Enumerations of the compiler** (`Kind`, `TypeKind`, `ExprKind`, `StmtKind`, `DeclKind`, `RefKind`) keep their order; a keyword token is `ك_` + the keyword (`K_WHILE` → `نوع_مفردة.ك_طالما`).
 - `int` results of `-1` / `0` that callers chain with `||` become `منطقي` chains with `و`: `if (a() || b()) return -1;` → `إذا ليس )أ)( و ب)(( } ارجع خطأ؛ {`.
 
 ## `src/common/utf8` → `مشترك.ترميز`

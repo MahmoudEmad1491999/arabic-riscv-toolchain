@@ -10,6 +10,11 @@
 #  3. Every tool ported so far against its C original: same standard output,
 #     standard error and exit code, on every object made below, on damaged
 #     objects, and on the error cases.
+#  6. مترجم: the same assembly for every compiler test, the OS and the ported
+#     tools; the same errors for the error tests (both orders) and for damaged
+#     sources; in build mode the same objects and executables for every
+#     compiler test, the kernel (--عاري) and an OS program (--برنامج); and it
+#     builds itself to the same files as the C compiler (stage 2 = stage 3).
 #  5. رابط: the same executables, in all three modes, from the link tests (our
 #     objects and ELF), the compiler tests with the library, an OS program, the
 #     same errors for the error tests, and damaged objects.
@@ -29,7 +34,7 @@ pass=0; fail=0
 report() { if [ "$2" = 1 ]; then pass=$((pass+1)); else echo "FAIL $1"; fail=$((fail+1)); fi; }
 
 # the ported tools, built by our compiler for Linux
-for tool in عارض محزم مجمع رابط; do
+for tool in عارض محزم مجمع رابط مترجم; do
     "$CC" "$ROOT/مصدر/$tool.غرة" "$ROOT/lib" > "$OUT/build.log" 2>&1 || { cat "$OUT/build.log"; echo "FAIL build مصدر/$tool"; exit 1; }
 done
 VIEW_C="$ROOT/build/عارض"
@@ -309,6 +314,89 @@ for path in victims:
 PY
 for f in $(cat "$OUT/ld_mutants.txt"); do ld_same "$f" || ok=0; done
 report "port/رابط ($nld links, $(($(wc -l < "$OUT/mutants.txt") + $(wc -l < "$OUT/ld_mutants.txt"))) damaged objects)" $ok
+
+# مترجم: the same assembly, objects, executables and errors
+ok=1
+CC_G="$ROOT/مصدر/بناء/مترجم"
+C="$OUT/cc-port"
+mkdir -p "$C"
+ncc=0
+cc_same() {   # cc_same DIR ARGS...: both compilers in copies DIR/c and DIR/g, same stdout, stderr, exit and files
+    d=$1; shift
+    (cd "$d/c" && "$CC" "$@" > ../c.out 2> ../c.err); a=$?
+    (cd "$d/g" && qemu-riscv64 "$CC_G" "$@" > ../g.out 2> ../g.err); b=$?
+    if [ $a = $b ] && cmp -s "$d/c.out" "$d/g.out" && cmp -s "$d/c.err" "$d/g.err" && diff -r "$d/c" "$d/g" > /dev/null; then
+        ncc=$((ncc+1)); return 0
+    fi
+    echo "  مترجم differs in $d on: $*: exit $a/$b"; diff "$d/c.err" "$d/g.err" | head -3; diff -rq "$d/c" "$d/g" | head -3
+    return 1
+}
+fresh() {   # fresh DIR SOURCE-DIR...: DIR/c and DIR/g, copies of the sources
+    rm -rf "$1"; mkdir -p "$1/c" "$1/g"; d=$1; shift
+    for s in "$@"; do cp -r "$s"/. "$d/c/"; cp -r "$s"/. "$d/g/"; done
+    rm -rf "$d/c/بناء" "$d/g/بناء"
+}
+# one assembly file per program
+fresh "$C/asm" "$ROOT/tests/cc"
+for src in "$ROOT"/tests/cc/*.غرة; do cc_same "$C/asm" "$(basename "$src")" out.تجميع "$ROOT/lib" || ok=0; done
+fresh "$C/os" "$ROOT/os"
+for src in "$ROOT"/os/برامج/*.غرة; do cc_same "$C/os" "برامج/$(basename "$src")" out.تجميع مستخدم "$ROOT/lib" || ok=0; done
+cc_same "$C/os" نواة.غرة out.تجميع || ok=0
+fresh "$C/tools" "$ROOT/مصدر"
+for tool in عارض محزم مجمع رابط مترجم; do cc_same "$C/tools" $tool.غرة out.تجميع "$ROOT/lib" || ok=0; done
+# errors, both orders; usage and file errors
+fresh "$C/err" "$ROOT/tests/cc-errors"
+for order in "" file; do
+    export DIAG_ORDER=$order
+    for src in "$ROOT"/tests/cc-errors/*.غرة; do cc_same "$C/err" "$(basename "$src")" out.تجميع "$ROOT/lib" || ok=0; done
+    cc_same "$C/err" || ok=0
+    cc_same "$C/err" لا_يوجد.غرة out.تجميع || ok=0
+    cc_same "$C/err" "$ROOT/README.md" || ok=0
+    cc_same "$C/err" 1سيئ.غرة "$ROOT/lib" || ok=0
+done
+unset DIAG_ORDER
+rm -f "$C"/err/*/out.تجميع
+# build mode: every program, the kernel, an OS program, and the compiler itself
+fresh "$C/build" "$ROOT/tests/cc"
+for src in "$ROOT"/tests/cc/*.غرة; do
+    extra=""; name=$(basename "$src" .غرة)
+    [ -f "$ROOT/tests/cc/$name.c" ] && continue   # needs a C object (run_build_tests.sh)
+    cc_same "$C/build" "$name.غرة" "$ROOT/lib" $extra || ok=0
+done
+fresh "$C/kernel" "$ROOT/os"
+cc_same "$C/kernel" نواة.غرة --عاري بدء.تجميع معالج.تجميع || ok=0
+cc_same "$C/kernel" برامج/صدى.غرة مستخدم "$ROOT/lib" --برنامج || ok=0
+fresh "$C/self" "$ROOT/مصدر"
+cc_same "$C/self" مترجم.غرة "$ROOT/lib" || ok=0
+# damaged sources: characters deleted, doubled or replaced, lines swapped
+mkdir -p "$C/mut/c" "$C/mut/g"
+python3 -I - "$C/mut" "$ROOT"/tests/cc/أساسيات.غرة "$ROOT"/tests/cc/بيانات_وتحكم.غرة "$ROOT"/مصدر/الترجمة/أنواع.غرة <<'PY' > "$C/mutants.txt" || ok=0
+import random, sys
+out, srcs = sys.argv[1], sys.argv[2:]
+rnd = random.Random(9)
+pool = list('٠١٢٣٤٥٦٧٨٩،:+-*/)(][}{ \n"\'^@.؛=<>') + ['ليس', 'و', 'أو', 'متغير', 'دالة', 'حجم', 'صحيح٢٣', 'اختياري', 'وجد', 'لاشيء']
+n = 0
+for path in srcs:
+    text = open(path, encoding='utf-8').read()
+    for i in range(40):
+        t = list(text)
+        for _ in range(1 + i % 3):
+            k = rnd.randrange(len(t))
+            op = rnd.randrange(3)
+            if op == 0: del t[k]
+            elif op == 1: t.insert(k, t[k])
+            else: t[k] = rnd.choice(pool)
+        t = ''.join(t)
+        if i % 5 == 0:
+            lines = t.split('\n'); a, b = rnd.randrange(len(lines)), rnd.randrange(len(lines))
+            lines[a], lines[b] = lines[b], lines[a]; t = '\n'.join(lines)
+        for side in 'cg':
+            open('%s/%s/م%d.غرة' % (out, side, n), 'w', encoding='utf-8').write(t)
+        print('م%d.غرة' % n)
+        n += 1
+PY
+for f in $(cat "$C/mutants.txt"); do cc_same "$C/mut" "$f" out.تجميع "$ROOT/lib" || ok=0; done
+report "port/مترجم ($ncc runs, $(wc -l < "$C/mutants.txt") damaged sources; builds itself identically)" $ok
 
 echo "port tests: $pass passed, $fail failed"
 [ $fail = 0 ]

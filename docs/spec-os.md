@@ -56,7 +56,7 @@ Language stops in a program (index out of range, overflow, failed conversion) pr
 
 ## The shell `بوابة` (decision 55)
 
-One command per line: `اعرض` lists the root (`اعرض دليل` that directory; directories end in `/`), `اطبع ملف` prints a file, `خروج` ends the shell; any other first word runs the program at that path, with the following words as its arguments (decision 62), and reports its exit code. `صدى` prints its arguments. The disk also holds the toolchain ported to غرة (decision 58), built for our OS by `tools/build_os.sh`: `أدوات/مجمع`, `أدوات/عارض`, `أدوات/محزم`, and an example in `أمثلة/`; the boot test assembles it with `أدوات/مجمع` and shows the object with `أدوات/عارض`.
+One command per line: `اعرض` lists the root (`اعرض دليل` that directory; directories end in `/`), `اطبع ملف` prints a file, `خروج` ends the shell; any other first word runs the program at that path, with the following words as its arguments (decision 62), and reports its exit code. `صدى` prints its arguments. The disk also holds the toolchain ported to غرة (decision 58), built for our OS by `tools/build_os.sh`: `أدوات/مجمع`, `أدوات/رابط`, `أدوات/عارض`, `أدوات/محزم`, `أدوات/مترجم`, the user library in `مستخدم/`, and examples in `أمثلة/`; the boot test assembles `حساب.تجميع` with `أدوات/مجمع`, links it with `أدوات/رابط --برنامج`, shows both with `أدوات/عارض`, then compiles `صدى.غرة` with `أدوات/مترجم أمثلة/صدى.غرة مستخدم --برنامج` and runs `أمثلة/بناء/صدى`.
 
 ## Running it
 
