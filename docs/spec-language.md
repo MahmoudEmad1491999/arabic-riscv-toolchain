@@ -50,6 +50,23 @@ Arithmetic on integers:
 
 Booleans: `و`، `أو` (short-circuit), `ليس`; the operands must be booleans (Decided 23). Conditions must be booleans.
 
+### 3.1.1 Real numbers (Decided 66–68)
+
+| Meaning | Name | `مقاس` | Values |
+|---|---|---|---|
+| IEEE 754 binary32 | `حقيقي٢٣` | 4 | single precision, with infinities and NaN |
+| IEEE 754 binary64 | `حقيقي٤٦` | 8 | double precision, with infinities and NaN |
+
+**Literals.** A real literal has a `٫` and at least one digit on each side. The whole literal is reversed, like an integer, so in file order the fraction digits come first: `٥٢٫١` is one and a quarter, `١٫٠` is a tenth. `٬` may group digits on either side. An integer literal is never a real: write `٠٫٣`, not `٣` (A84). The literal is rounded once, correctly (to nearest, ties to even), to the type it meets; it is a compile error if it rounds to infinity, or if it is not zero but rounds to zero. A literal takes its type from where it is used, like an integer literal. When nothing gives it one (two literals on both sides of an operator, with no type expected), that is a compile error: give one side a type.
+
+**Operations.**
+- `+ - * /` and unary `-`, both operands of the same real type, with no promotion between `حقيقي٢٣` and `حقيقي٤٦`. Every operation rounds to nearest, ties to even, whatever the hardware's rounding mode says. Division by zero gives an infinity, as in IEEE 754.
+- `باقي`، the bitwise operators and the shifts do not apply to reals (compile error).
+- No hidden fused multiply-add: `أ * ب + ج` always rounds twice. `ضرب_جمع)أ، ب، ج(` computes `أ × ب + ج` with one rounding.
+- **Comparisons** (`== != < > <= >=`) **stop the program if either side is NaN** (Decided 67), with the message «مقارنة بقيمة ليست عددا». A comparison of constants that involves a NaN is a compile error. To test for NaN, use `ليس_عددا)ق(`, which returns a `منطقي` and never stops.
+- **Constant folding gives the same bits as running the code**: constants are computed with the same IEEE 754 operations and rounding, and a NaN result is RISC-V's canonical NaN. `ضرب_جمع` is never folded.
+- Reals may be `ثابت` (their interface records the exact bits) and `متطاير`.
+
 ### 3.2 Arrays and slices (Decided 30; indexing Decided 28)
 
 | Type | Written | Meaning |
@@ -220,7 +237,21 @@ Every conversion is explicit. Its name says what happens to a value that does no
 | `حول)نوع، ق(` | only when every value of the source fits the target (widening, unsigned → wider signed, boolean → integer as 0/1, character → unsigned 32-bit, enumeration → its underlying type) | exact; checked at compile time | 0 |
 | `حول_بفحص)نوع، ق(` | any integer ↔ integer, integer → character, integer → enumeration | stops the program if the value does not fit or is not a valid character / member | one comparison |
 | `اقتطع)نوع، ق(` | integer → integer of any width or signedness | keeps the low bits, reinterpreted (two's complement) | 0–1 instruction |
-| `اعتبر)نوع، ق(` | pointer ↔ pointer, pointer ↔ size | reinterprets the bits: **the escape hatch**, outside the language's guarantees | 0 |
+| `اعتبر)نوع، ق(` | pointer ↔ pointer, pointer ↔ size; a real ↔ an integer of the same size (not `حجم`) | reinterprets the bits: **the escape hatch**, outside the language's guarantees (for reals it is fully defined: the IEEE 754 bits) | 0 |
+
+Conversions that involve a real (Decided 66). None of them is implicit, and none depends on the hardware's rounding mode:
+
+| Built-in | When allowed | What it does |
+|---|---|---|
+| `حول)نوع، ق(` | `حقيقي٢٣` → `حقيقي٤٦`; integers of 8/16 bits → `حقيقي٢٣`; integers of 8/16/32 bits → `حقيقي٤٦` | exact: every value of the source is exact in the target |
+| `قرب)نوع، ق(` | any real or integer → a real | rounds to nearest, ties to even; `حقيقي٤٦` → `حقيقي٢٣` may give an infinity |
+| `حول_بفحص)نوع، ق(` | real ↔ integer, `حقيقي٤٦` → `حقيقي٢٣` | stops the program unless the value is kept exactly (no rounding, in range, not NaN) |
+| `اقتطع)نوع، ق(` | real → integer | rounds toward zero |
+| `قرب_لأقرب)نوع، ق(` | real → integer | rounds to nearest, ties to even |
+| `أرضية)نوع، ق(` | real → integer | rounds toward −∞ |
+| `سقف)نوع، ق(` | real → integer | rounds toward +∞ |
+
+The four real → integer conversions stop the program («قيمة لا تتسع في النوع») if the value is NaN or the rounded result does not fit the integer type, instead of producing a meaningless value as C does. With constant operands every conversion is done at compile time, with the same result, and a stop becomes a compile error.
 
 - Integer → boolean has no conversion: write `ق != ٠`.
 - Converting to a character can only be done with `حول_بفحص`, so an invalid character can never exist.
@@ -237,8 +268,10 @@ Every conversion is explicit. Its name says what happens to a value that does no
 - A function without a result omits `: نوع`.
 - Parameters are passed by value and cannot be assigned. To pass something by reference, pass a pointer.
 - There are no variadic functions, which removes the `printf` class of bugs. No overloading, no default arguments.
-- **Calling convention: RISC-V LP64 integer ABI, exactly**, so the language, our assembly and C compiled by GCC can call each other:
+- **Calling convention: RISC-V LP64D ABI, exactly** (Decided 69), so the language, our assembly and C compiled by GCC can call each other:
   - arguments in `وسيط٠`…`وسيط٧`, the rest on the stack; results in `وسيط٠` (and `وسيط١` for two-word results);
+  - real arguments in `وسيط_عشري٠`…`وسيط_عشري٧` first, then like integers once those are used up; a real result in `وسيط_عشري٠`. A `حقيقي٢٣` in a float register is NaN-boxed;
+  - a structure or array of up to 16 bytes that contains a real cannot be passed or returned by value yet: the ABI's flattening rules for it are not implemented, so it is a compile error rather than a silent mismatch (A84);
   - `محفوظ٠`…`محفوظ١١` are preserved by the callee; `مؤشر_المكدس` is 16-byte aligned;
   - 8/16/32-bit arguments are extended to 64 bits as the ABI says (signed: sign-extended; unsigned 8/16: zero-extended; unsigned 32: sign-extended, as RV64's ABI requires);
   - a slice is a two-word structure (pointer, length): two registers;
@@ -307,4 +340,4 @@ The result type is unsigned 8-bit because that is exactly what a Linux exit code
 3. Anything done through `اعتبر` that produces a pointer to memory that is not a valid object of that type, and a `شريحة_من` whose elements are not all valid objects of the element type.
 4. Hand-written assembly or foreign code that breaks the ABI.
 
-Nothing else is undefined.
+Nothing else is undefined. Real numbers add nothing to this list: every operation, conversion and comparison has one defined result or stops the program.

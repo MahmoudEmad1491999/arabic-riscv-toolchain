@@ -39,7 +39,7 @@ for src in "$P"/*.غرة; do
     extra=""
     if [ -f "$P/$name.c" ]; then
         extra="$P/$name.c.o"
-        "${PREFIX}gcc" -O1 -march=rv64im -mabi=lp64 -mno-relax -fno-pic -fno-pie -ffreestanding \
+        "${PREFIX}gcc" -O1 -march=rv64imfd -mabi=lp64d -mno-relax -fno-pic -fno-pie -ffreestanding \
             -fno-stack-protector -fno-asynchronous-unwind-tables -fno-unwind-tables -nostdlib \
             -c "$P/$name.c" -o "$extra" || ok=0
     fi

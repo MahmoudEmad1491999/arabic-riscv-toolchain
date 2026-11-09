@@ -34,6 +34,18 @@ The port is a faithful translation (decision 57): every C module has a غرة mo
 
 A tool's main file sits in `مصدر/` and is named after the tool, so `مصدر/` is its root and `مشترك.…` resolves there: `مترجم مصدر/عارض.غرة lib` builds `مصدر/بناء/عارض`. A tool's own modules go in a directory named with the verbal noun (`التجميع/` for `مجمع`, `الربط/` for `رابط`, `الترجمة/` for `مترجم`): a directory with the tool's own name would collide with the executable in `بناء/`.
 
+
+Real numbers (decisions 66–69) in the compiler port:
+
+| C | غرة |
+|---|---|
+| `K_REAL`, `E_REAL`, `T_FLOAT`, `T_UNTYPED_REAL`; `K_ROUND`, `K_ROUND_NEAREST`, `K_FLOOR`, `K_CEIL`, `K_IS_NAN`, `K_FMA` | `عدد_حقيقي`، `حقيقي_حرفي`، `حقيقي`، `حقيقي_بلا_نوع`؛ `ك_قرب`، `ك_قرب_لأقرب`، `ك_أرضية`، `ك_سقف`، `ك_ليس_عددا`، `ك_ضرب_جمع` |
+| `Tok.value32`, `Tok.real_err`, `REAL_ERR_BIG64` … | `القيمة٢٣`، `خطأ_الحقيقي`، `حقيقي_كبير٤٦` … |
+| `ty_real32`, `ty_real64`, `ty_untyped_real`, `ty_is_real`, `ty_has_real` | `حقيقي٢٣_`، `حقيقي٤٦_`، `حقيقي_بلا_نوع`، `حقيقي_هو`، `فيه_حقيقي` |
+| check.c: `abi_real_ok`, `r64`/`r32`/`b64`/`b32`, `real_val`, `real_to_int`, `int_to_real`, `real_to_real`, `real_arith`, `settle_real`, `check_real_convert` | `حقيقي_مقبول_في_الواجهة`، `من_بتات٤٦`/`من_بتات٢٣`/`بتات٤٦`/`بتات٢٣`، `قيمة_حقيقية`، `حقيقي_إلى_صحيح`، `صحيح_إلى_حقيقي`، `حقيقي_إلى_حقيقي`، `حساب_حقيقي`، `ثبت_حقيقيا`، `افحص_تحويلا_حقيقيا` |
+| gen.c: `FM`, `to_freg`, `from_freg`, `real_op`, `clear_flags`, `stop_on_flags`, `gen_real_binary`, `gen_real_builtin` | `رمز_ح`، `إلى_عشري`، `من_عشري`، `تع٤`، `امسح_الأعلام`، `أوقف_بالأعلام`، `ولد_ثنائيا_حقيقيا`، `ولد_مدمجا_حقيقيا` |
+
+In غرة the constant folding uses غرة's own real arithmetic, so the comparisons there test `ليس_عددا` first: comparing a NaN would stop the compiler.
 ## Conventions
 
 - **Status codes:** a C function returning `0` / `-1` returns `منطقي`: `صح` for success.
@@ -74,10 +86,11 @@ A tool's main file sits in `مصدر/` and is named after the tool, so `مصدر
 
 | C | غرة |
 |---|---|
-| `NumError`: `NUM_OK`, `NUM_ERR_NOT_NUMBER`, `NUM_ERR_NO_DIGITS`, `NUM_ERR_BAD_DIGIT`, `NUM_ERR_SEPARATOR`, `NUM_ERR_OVERFLOW` | `خطأ_عدد`: `سليم`، `ليس_عددا`، `بلا_أرقام`، `رقم_كبير`، `فاصل_خاطئ`، `فيض` |
+| `NumError`: `NUM_OK`, `NUM_ERR_NOT_NUMBER`, `NUM_ERR_NO_DIGITS`, `NUM_ERR_BAD_DIGIT`, `NUM_ERR_SEPARATOR`, `NUM_ERR_OVERFLOW`, `NUM_ERR_TOO_BIG`, `NUM_ERR_TOO_SMALL` | `خطأ_عدد`: `سليم`، `لا_يبدأ_برقم`، `بلا_أرقام`، `رقم_كبير`، `فاصل_خاطئ`، `فيض`، `كبير_جدا`، `يصير_صفرا` (`لا_يبدأ_برقم` was `ليس_عددا` before that became a built-in) |
 | `NumResult`: `value`, `base`, `end`, `err`, `err_pos` | `نتيجة`: `القيمة`، `الأساس`، `النهاية`، `الخطأ`، `موضع_الخطأ` |
 | `num_parse` | `اقرأ` |
 | `num_format_dec` / `num_format_hex` | `اكتب_عشريا` / `اكتب_ست_عشري` |
+| `num_real_ahead`, `num_parse_real`, `NUM_REAL_MAX_DIGITS`; `Big` and `big_*` | `حقيقي_قادم`، `اقرأ_حقيقيا`، `أقصى_أرقام_حقيقية`؛ `كبير` و`صفر_كبير`، `اضرب_واجمع`، `طول_بالبتات`، `ازح_يسارا`، `ازح_يمينا_بتا`، `قارن`، `اطرح` |
 
 ## `src/common/buf` → `مشترك.مخزن`
 

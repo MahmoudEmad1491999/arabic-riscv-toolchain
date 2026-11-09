@@ -9,6 +9,7 @@
 #define CP_AR_COMMA      0x060Cu /* ، operand separator */
 #define CP_AR_SEMICOLON  0x061Bu /* ؛ reserved, error for now */
 #define CP_AR_THOUSANDS  0x066Cu /* ٬ digit grouping */
+#define CP_AR_DECIMAL    0x066Bu /* ٫ decimal point (decision 68) */
 #define CP_TATWEEL       0x0640u /* ـ forbidden */
 #define CP_SEEN          0x0633u /* س hex marker, newline escape */
 #define CP_THEH          0x062Bu /* ث binary marker */

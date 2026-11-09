@@ -10,6 +10,7 @@ const char *kind_text(Kind k);
 
 /* types.c */
 extern Type *ty_void, *ty_bool, *ty_char, *ty_size, *ty_untyped, *ty_null;
+extern Type *ty_real32, *ty_real64, *ty_untyped_real;
 void types_init(Arena *a);
 Type *ty_int(int bits, int is_signed);
 Type *ty_scalar_by_name(const uint8_t *name, size_t len);
@@ -19,6 +20,8 @@ uint64_t ty_size_of(const Type *t);
 uint64_t ty_align_of(const Type *t);
 int ty_is_int(const Type *t);       /* T_INT (حجم included) */
 int ty_is_aggregate(const Type *t); /* lives in memory: array, struct */
+int ty_is_real(const Type *t);      /* T_FLOAT */
+int ty_has_real(const Type *t);     /* a real number anywhere inside (ABI, A84) */
 const char *ty_name(const Type *t); /* for messages, file order */
 
 /* parse.c */

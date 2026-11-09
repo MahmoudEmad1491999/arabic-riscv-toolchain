@@ -73,6 +73,7 @@ static void type(Pr *p, const Type *t)
             s(p, digits[t->bits == 8 ? 0 : t->bits == 16 ? 1 : t->bits == 32 ? 2 : 3]);
         }
         break;
+    case T_FLOAT: s(p, t->bits == 32 ? "حقيقي٢٣" : "حقيقي٤٦"); break;
     case T_BOOL: s(p, "منطقي"); break;
     case T_CHAR: s(p, "حرف"); break;
     case T_PTR:
@@ -125,6 +126,11 @@ static void value(Pr *p, const Decl *d)
     case T_BOOL: s(p, e->cval.mag ? "صح" : "خطأ"); break;
     case T_CHAR: s(p, "'"); lit_cp(p, (uint32_t)e->cval.mag, '\''); s(p, "'"); break;
     case T_INT: cval(p, e->cval); break;
+    case T_FLOAT: /* the exact bits: اعتبر)حقيقي٤٦، حول)طبيعي٤٦، ن(( */
+        s(p, t->bits == 32 ? "اعتبر)حقيقي٢٣، حول)طبيعي٢٣، " : "اعتبر)حقيقي٤٦، حول)طبيعي٤٦، ");
+        num(p, e->cval.mag);
+        s(p, "((");
+        break;
     case T_ENUM: {
         const Decl *en = t->decl;
         for (i = 0; i < en->nmembers; i++) {

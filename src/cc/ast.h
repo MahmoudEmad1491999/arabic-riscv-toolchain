@@ -15,6 +15,7 @@ typedef enum {
     K_EOF,
     K_IDENT,
     K_INT,        /* integer literal: value */
+    K_REAL,       /* real literal (decision 68): value = 64-bit pattern, value32 = 32-bit */
     K_CHAR,       /* character literal: value = code point */
     K_STRING,     /* str / str_len: UTF-8 bytes */
     /* punctuation */
@@ -40,7 +41,9 @@ typedef enum {
     /* built-in operations written like calls */
     K_CONVERT, K_CONVERT_CHECKED, K_TRUNCATE, K_REINTERPRET, K_SIZEOF, K_ALIGNOF,
     K_INDEX_CHECKED, K_SLICE_CHECKED, K_SLICE_FROM,
-    K_ADD_CHECKED, K_SUB_CHECKED, K_MUL_CHECKED, K_ADD_SAT, K_SUB_SAT, K_MUL_SAT
+    K_ADD_CHECKED, K_SUB_CHECKED, K_MUL_CHECKED, K_ADD_SAT, K_SUB_SAT, K_MUL_SAT,
+    /* real numbers (decisions 66-68) */
+    K_ROUND, K_ROUND_NEAREST, K_FLOOR, K_CEIL, K_IS_NAN, K_FMA
 } Kind;
 
 typedef struct {
@@ -49,9 +52,17 @@ typedef struct {
     const uint8_t *text;  /* identifiers (UTF-8) */
     size_t len;
     uint64_t value;
+    uint64_t value32;     /* K_REAL: the literal rounded to 32 bits */
+    int real_err;         /* K_REAL: REAL_ERR_* bits */
     const uint8_t *str;
     size_t str_len;
 } Tok;
+
+/* Tok.real_err: the literal does not fit a format (decision 68) */
+#define REAL_ERR_BIG64 1
+#define REAL_ERR_SMALL64 2
+#define REAL_ERR_BIG32 4
+#define REAL_ERR_SMALL32 8
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -70,7 +81,9 @@ typedef enum {
     T_FUNC,
     T_NAMED,      /* a struct/enum name not resolved yet (parser output) */
     T_UNTYPED,    /* integer constant without a type yet */
-    T_NULLLIT     /* the literal لاشيء before it meets an optional type */
+    T_NULLLIT,    /* the literal لاشيء before it meets an optional type */
+    T_FLOAT,      /* حقيقي٢٣ / حقيقي٤٦: bits */
+    T_UNTYPED_REAL /* real literal without a type yet */
 } TypeKind;
 
 typedef struct Type Type;
@@ -102,6 +115,7 @@ struct Type {
 
 typedef enum {
     E_INT, E_CHAR, E_STRING, E_BOOL, E_NULL,
+    E_REAL,       /* real literal: value in tok (decision 68) */
     E_NAME,       /* resolved to a local, global, constant, function or enum member */
     E_MEMBER,     /* base.name (module member, enum member, struct field, .طول) */
     E_CALL,
@@ -121,7 +135,8 @@ typedef enum {
 typedef struct Expr Expr;
 typedef struct Local Local;
 
-/* compile-time integer value: exact sign + magnitude */
+/* compile-time integer value: exact sign + magnitude. A real constant
+ * keeps its IEEE 754 bit pattern in mag (neg = 0). */
 typedef struct {
     int neg;
     uint64_t mag;

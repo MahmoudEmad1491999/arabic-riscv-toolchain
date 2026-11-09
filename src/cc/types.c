@@ -7,6 +7,7 @@
 #include <string.h>
 
 Type *ty_void, *ty_bool, *ty_char, *ty_size, *ty_untyped, *ty_null;
+Type *ty_real32, *ty_real64, *ty_untyped_real;
 static Type *ints[2][4]; /* [signed][8,16,32,64] */
 static Arena *types_arena;
 
@@ -41,6 +42,11 @@ void types_init(Arena *a)
     ty_char = ty_new(a, T_CHAR);
     ty_untyped = ty_new(a, T_UNTYPED);
     ty_null = ty_new(a, T_NULLLIT);
+    ty_untyped_real = ty_new(a, T_UNTYPED_REAL);
+    ty_real32 = ty_new(a, T_FLOAT);
+    ty_real32->bits = 32;
+    ty_real64 = ty_new(a, T_FLOAT);
+    ty_real64->bits = 64;
     for (s = 0; s < 2; s++) {
         for (i = 0; i < 4; i++) {
             Type *t = ty_new(a, T_INT);
@@ -74,6 +80,8 @@ Type *ty_scalar_by_name(const uint8_t *name, size_t len)
         }
     }
     if (bytes_eq_str(name, len, "حجم")) return ty_size;
+    if (bytes_eq_str(name, len, "حقيقي٢٣")) return ty_real32;
+    if (bytes_eq_str(name, len, "حقيقي٤٦")) return ty_real64;
     if (bytes_eq_str(name, len, "منطقي")) return ty_bool;
     if (bytes_eq_str(name, len, "حرف")) return ty_char;
     return NULL;
@@ -87,6 +95,8 @@ int ty_equal(const Type *a, const Type *b)
     switch (a->kind) {
     case T_INT:
         return a->bits == b->bits && a->is_signed == b->is_signed && a->is_size == b->is_size;
+    case T_FLOAT:
+        return a->bits == b->bits;
     case T_PTR:
     case T_SLICE:
         return a->readonly == b->readonly && a->vol == b->vol && ty_equal(a->elem, b->elem);
@@ -113,7 +123,7 @@ int ty_equal(const Type *a, const Type *b)
 uint64_t ty_size_of(const Type *t)
 {
     switch (t->kind) {
-    case T_INT: return (uint64_t)t->bits / 8;
+    case T_INT: case T_FLOAT: return (uint64_t)t->bits / 8;
     case T_BOOL: return 1;
     case T_CHAR: return 4;
     case T_PTR: case T_OPT: case T_FUNC: return 8;
@@ -146,6 +156,24 @@ int ty_is_int(const Type *t)
 int ty_is_aggregate(const Type *t)
 {
     return t->kind == T_ARRAY || t->kind == T_STRUCT;
+}
+
+int ty_is_real(const Type *t)
+{
+    return t != NULL && t->kind == T_FLOAT;
+}
+
+int ty_has_real(const Type *t)
+{
+    size_t i;
+    if (t->kind == T_FLOAT) return 1;
+    if (t->kind == T_ARRAY) return ty_has_real(t->elem);
+    if (t->kind == T_STRUCT) {
+        for (i = 0; i < t->decl->nfields; i++) {
+            if (ty_has_real(t->decl->fields[i].type)) return 1;
+        }
+    }
+    return 0;
 }
 
 /* ---- names for messages (file order) ---- */
@@ -193,6 +221,8 @@ static void nb_type(const Type *t)
             nb_str(digits[bit_index(t->bits)]);
         }
         break;
+    case T_FLOAT: nb_str(t->bits == 32 ? "حقيقي٢٣" : "حقيقي٤٦"); break;
+    case T_UNTYPED_REAL: nb_str("عدد_حقيقي"); break;
     case T_BOOL: nb_str("منطقي"); break;
     case T_CHAR: nb_str("حرف"); break;
     case T_PTR:

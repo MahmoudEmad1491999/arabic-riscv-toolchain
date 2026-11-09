@@ -214,6 +214,10 @@ static const Type *scalar_repr(const Type *t)
 static void normalize(Gen *g, const char *r, const Type *t)
 {
     t = scalar_repr(t);
+    if (t->kind == T_FLOAT && t->bits == 32) {
+        ins_imm(g, "جمع_فوري_كلمة", r, r, 0); /* the bits, sign-extended like حمل_كلمة */
+        return;
+    }
     if (t->kind != T_INT || t->bits == 64) return;
     if (t->bits == 32) {
         if (t->is_signed) {
@@ -237,7 +241,7 @@ static void load_scalar(Gen *g, const char *r, const char *base, int64_t off, co
 {
     const Type *s = scalar_repr(t);
     uint64_t size = ty_size_of(s);
-    int sg = s->kind == T_INT && s->is_signed;
+    int sg = (s->kind == T_INT && s->is_signed) || s->kind == T_FLOAT;
     const char *mn = size == 1 ? (sg ? "حمل_بايت" : "حمل_بايت_بلا_إشارة")
                    : size == 2 ? (sg ? "حمل_نصف_كلمة" : "حمل_نصف_كلمة_بلا_إشارة")
                    : size == 4 ? (sg ? "حمل_كلمة" : "حمل_كلمة_بلا_إشارة")
@@ -477,9 +481,22 @@ static int is_u32(const Type *t)
     return (t->kind == T_INT && t->bits == 32 && !t->is_signed) || t->kind == T_CHAR;
 }
 
-static const char *const areg[8] = {
-    "وسيط٠", "وسيط١", "وسيط٢", "وسيط٣", "وسيط٤", "وسيط٥", "وسيط٦", "وسيط٧"
+static const char *const areg[16] = {
+    "وسيط٠", "وسيط١", "وسيط٢", "وسيط٣", "وسيط٤", "وسيط٥", "وسيط٦", "وسيط٧",
+    "وسيط_عشري٠", "وسيط_عشري١", "وسيط_عشري٢", "وسيط_عشري٣",
+    "وسيط_عشري٤", "وسيط_عشري٥", "وسيط_عشري٦", "وسيط_عشري٧"
 };
+
+/* a real number in an integer register <-> a float register */
+#define FM(t, base) ((t)->bits == 32 ? base "_عشري" : base "_مزدوج")
+static void to_freg(Gen *g, const char *f, const char *x, const Type *t)
+{
+    ins(g, FM(t, "نسخ_بتات_إلى"), f, x, NULL);
+}
+static void from_freg(Gen *g, const char *x, const char *f, const Type *t)
+{
+    ins(g, FM(t, "نسخ_بتات_من"), x, f, NULL);   /* 32 bits: sign-extended */
+}
 
 /* Where each word of each argument travels (RISC-V LP64 ABI):
  * registers وسيط٠…وسيط٧ in order, then the stack in 8-byte words. A
@@ -493,12 +510,16 @@ typedef struct {
 
 static int plan_args(Type **params, size_t n, int hidden, ArgPlace *out)
 {
-    int r = hidden ? 1 : 0, st = 0;
+    int r = hidden ? 1 : 0, st = 0, fr = 0;
     size_t i;
     for (i = 0; i < n; i++) {
         int w = abi_words(params[i]), k;
         out[i].words = w;
         for (k = 0; k < 2; k++) { out[i].reg[k] = -1; out[i].stack[k] = -1; }
+        if (params[i]->kind == T_FLOAT && fr < 8) {
+            out[i].reg[0] = 8 + fr++;   /* LP64D: وسيط_عشري٠…٧ first */
+            continue;
+        }
         for (k = 0; k < w; k++) {
             if (r < 8) {
                 out[i].reg[k] = r++;
@@ -568,6 +589,11 @@ static void gen_call(Gen *g, Expr *e)
         int64_t slot = area + 16 * (int64_t)(n - 1 - i);
         for (k = 0; k < place[i].words; k++) {
             const char *dst = place[i].reg[k] >= 0 ? areg[place[i].reg[k]] : "مؤقت٠";
+            if (place[i].reg[k] >= 8) {
+                /* حمل_عشري boxes a 32-bit value as the ABI wants */
+                mem_op(g, FM(ft->params[i], "حمل"), dst, "مؤشر_المكدس", slot);
+                continue;
+            }
             mem_op(g, "حمل_كلمة_مزدوجة", dst, "مؤشر_المكدس", slot + 8 * k);
             if (place[i].words == 1 && is_u32(ft->params[i])) {
                 ins_imm(g, "جمع_فوري_كلمة", dst, dst, 0); /* ABI: 32-bit values sign-extended */
@@ -597,6 +623,8 @@ static void gen_call(Gen *g, Expr *e)
             mem_op(g, "خزن_كلمة_مزدوجة", "وسيط١", "مؤقت٠", 8);
         }
         add_imm(g, "وسيط٠", "محفوظ٠", ret_slot);
+    } else if (rt->kind == T_FLOAT) {
+        from_freg(g, "وسيط٠", "وسيط_عشري٠", rt);
     } else if (rt->kind != T_SLICE) {
         normalize(g, "وسيط٠", rt);
     }
@@ -825,6 +853,163 @@ static void gen_checked_convert(Gen *g, Expr *e)
     normalize(g, "وسيط٠", to);
 }
 
+/* ------------------------------------------------------------------ */
+/* Real numbers (decisions 66-68). Values travel as bits in وسيط٠; each
+ * operation moves them to مؤقت_عشري… and back. Every rounding instruction
+ * names أقرب_زوجي, so the result never depends on نمط_التقريب. */
+
+static void real_op(Gen *g, const char *mn, const char *a, const char *b, const char *c, const char *d)
+{
+    emit(g, "    ");
+    emit(g, mn);
+    emit(g, " ");
+    emit(g, a);
+    emit(g, "، ");
+    emit(g, b);
+    if (c) { emit(g, "، "); emit(g, c); }
+    if (d) { emit(g, "، "); emit(g, d); }
+    emit(g, "\n");
+}
+
+/* stop with routine unless (the flags raised since the last clear & mask) == 0 */
+static void clear_flags(Gen *g)
+{
+    ins(g, "كتابة_تحكم", "أعلام_العشري", "صفر", NULL);
+}
+static void stop_on_flags(Gen *g, int mask, const char *routine)
+{
+    int ok = new_label(g);
+    ins(g, "قراءة_تحكم", "مؤقت٠", "أعلام_العشري", NULL);
+    ins_imm(g, "و_منطقي_فوري", "مؤقت٠", "مؤقت٠", mask);
+    jump_if(g, "مؤقت٠", 0, ok);
+    stop(g, routine);
+    emit_label_def(g, ok);
+}
+
+#define FLAG_NX 1
+#define FLAG_NV 16
+
+/* وسيط٠ = left, وسيط١ = right, both of real type t */
+static void gen_real_binary(Gen *g, Kind k, const Type *t)
+{
+    to_freg(g, "مؤقت_عشري٠", "وسيط٠", t);
+    to_freg(g, "مؤقت_عشري١", "وسيط١", t);
+    if (k == K_PLUS || k == K_MINUS || k == K_STAR || k == K_SLASH) {
+        const char *mn = k == K_PLUS ? FM(t, "جمع") : k == K_MINUS ? FM(t, "طرح")
+                       : k == K_STAR ? FM(t, "ضرب") : FM(t, "قسمة");
+        real_op(g, mn, "مؤقت_عشري٠", "مؤقت_عشري٠", "مؤقت_عشري١", "أقرب_زوجي");
+        from_freg(g, "وسيط٠", "مؤقت_عشري٠", t);
+        return;
+    }
+    {
+        /* decision 67: comparing a NaN stops the program */
+        int ok = new_label(g);
+        ins(g, FM(t, "ضبط_إذا_يساوي"), "مؤقت٠", "مؤقت_عشري٠", "مؤقت_عشري٠");
+        ins(g, FM(t, "ضبط_إذا_يساوي"), "مؤقت١", "مؤقت_عشري١", "مؤقت_عشري١");
+        ins(g, "و_منطقي", "مؤقت٠", "مؤقت٠", "مؤقت١");
+        jump_if(g, "مؤقت٠", 1, ok);
+        stop(g, "_غرة_ليس_عددا");
+        emit_label_def(g, ok);
+    }
+    switch (k) {
+    case K_EQ: ins(g, FM(t, "ضبط_إذا_يساوي"), "وسيط٠", "مؤقت_عشري٠", "مؤقت_عشري١"); break;
+    case K_NE:
+        ins(g, FM(t, "ضبط_إذا_يساوي"), "وسيط٠", "مؤقت_عشري٠", "مؤقت_عشري١");
+        ins_imm(g, "أو_حصري_فوري", "وسيط٠", "وسيط٠", 1);
+        break;
+    case K_LT: ins(g, FM(t, "ضبط_إذا_أصغر"), "وسيط٠", "مؤقت_عشري٠", "مؤقت_عشري١"); break;
+    case K_GT: ins(g, FM(t, "ضبط_إذا_أصغر"), "وسيط٠", "مؤقت_عشري١", "مؤقت_عشري٠"); break;
+    case K_LE: ins(g, FM(t, "ضبط_إذا_أصغر_أو_يساوي"), "وسيط٠", "مؤقت_عشري٠", "مؤقت_عشري١"); break;
+    default: ins(g, FM(t, "ضبط_إذا_أصغر_أو_يساوي"), "وسيط٠", "مؤقت_عشري١", "مؤقت_عشري٠"); break;
+    }
+}
+
+static void gen_real_builtin(Gen *g, Expr *e)
+{
+    Kind k = e->tok.kind;
+    const Type *to = e->type, *from;
+    if (k == K_IS_NAN) {
+        from = e->args[0]->type;
+        gen_expr(g, e->args[0]);
+        to_freg(g, "مؤقت_عشري٠", "وسيط٠", from);
+        ins(g, FM(from, "ضبط_إذا_يساوي"), "وسيط٠", "مؤقت_عشري٠", "مؤقت_عشري٠");
+        ins_imm(g, "أو_حصري_فوري", "وسيط٠", "وسيط٠", 1);
+        return;
+    }
+    if (k == K_FMA) {
+        gen_expr(g, e->args[0]);
+        push(g, "وسيط٠");
+        gen_expr(g, e->args[1]);
+        push(g, "وسيط٠");
+        gen_expr(g, e->args[2]);
+        to_freg(g, "مؤقت_عشري٢", "وسيط٠", to);
+        pop(g, "وسيط٠");
+        to_freg(g, "مؤقت_عشري١", "وسيط٠", to);
+        pop(g, "وسيط٠");
+        to_freg(g, "مؤقت_عشري٠", "وسيط٠", to);
+        emit(g, "    ");
+        emit(g, FM(to, "ضرب_جمع"));
+        emit(g, " مؤقت_عشري٠، مؤقت_عشري٠، مؤقت_عشري١، مؤقت_عشري٢، أقرب_زوجي\n");
+        from_freg(g, "وسيط٠", "مؤقت_عشري٠", to);
+        return;
+    }
+    from = e->a->type;
+    gen_expr(g, e->a);
+    if (k == K_REINTERPRET) {
+        normalize(g, "وسيط٠", to);
+        return;
+    }
+    if (from->kind == T_FLOAT && to->kind == T_FLOAT) {
+        if (from->bits == to->bits) return;
+        to_freg(g, "مؤقت_عشري٠", "وسيط٠", from);
+        if (to->bits == 64) {
+            ins(g, "تحويل_مزدوج_من_عشري", "مؤقت_عشري٠", "مؤقت_عشري٠", NULL); /* exact */
+        } else {
+            if (k == K_CONVERT_CHECKED) clear_flags(g);
+            real_op(g, "تحويل_عشري_من_مزدوج", "مؤقت_عشري٠", "مؤقت_عشري٠", "أقرب_زوجي", NULL);
+            if (k == K_CONVERT_CHECKED) stop_on_flags(g, FLAG_NX, "_غرة_تحويل_فاشل");
+        }
+        from_freg(g, "وسيط٠", "مؤقت_عشري٠", to);
+        return;
+    }
+    if (to->kind == T_FLOAT) {
+        /* integer to real: the integer is canonical in 64 bits */
+        int u64 = !from->is_signed && (from->is_size || from->bits == 64);
+        const char *mn = to->bits == 32
+            ? (u64 ? "تحويل_عشري_من_كلمة_مزدوجة_بلا_إشارة" : "تحويل_عشري_من_كلمة_مزدوجة")
+            : (u64 ? "تحويل_مزدوج_من_كلمة_مزدوجة_بلا_إشارة" : "تحويل_مزدوج_من_كلمة_مزدوجة");
+        if (k == K_CONVERT_CHECKED) clear_flags(g);
+        real_op(g, mn, "مؤقت_عشري٠", "وسيط٠", "أقرب_زوجي", NULL);
+        if (k == K_CONVERT_CHECKED) stop_on_flags(g, FLAG_NX, "_غرة_تحويل_فاشل");
+        from_freg(g, "وسيط٠", "مؤقت_عشري٠", to);
+        return;
+    }
+    {
+        /* real to integer: a 64-bit conversion with the asked rounding,
+         * stopping on NaN or overflow (NV), then the range of the target */
+        int sg = to->is_signed;
+        const char *rm = k == K_ROUND_NEAREST ? "أقرب_زوجي" : k == K_FLOOR ? "للأسفل"
+                       : k == K_CEIL ? "للأعلى" : "نحو_الصفر";
+        const char *mn = from->bits == 32
+            ? (sg ? "تحويل_كلمة_مزدوجة_من_عشري" : "تحويل_كلمة_مزدوجة_بلا_إشارة_من_عشري")
+            : (sg ? "تحويل_كلمة_مزدوجة_من_مزدوج" : "تحويل_كلمة_مزدوجة_بلا_إشارة_من_مزدوج");
+        to_freg(g, "مؤقت_عشري٠", "وسيط٠", from);
+        clear_flags(g);
+        real_op(g, mn, "وسيط٠", "مؤقت_عشري٠", rm, NULL);
+        stop_on_flags(g, k == K_CONVERT_CHECKED ? FLAG_NV | FLAG_NX : FLAG_NV, "_غرة_تحويل_فاشل");
+        if (!to->is_size && to->bits < 64) {
+            int ok = new_label(g);
+            ins(g, "نسخ", "مؤقت١", "وسيط٠", NULL);
+            normalize(g, "مؤقت١", to);
+            emit(g, "    تفرع_إذا_يساوي وسيط٠، مؤقت١، ");
+            emit_label_name(g, ok);
+            emit(g, "\n");
+            stop(g, "_غرة_تحويل_فاشل");
+            emit_label_def(g, ok);
+        }
+    }
+}
+
 static void gen_aggregate_literal(Gen *g, Expr *e)
 {
     Type *t = e->type;
@@ -912,6 +1097,10 @@ static void gen_decl_ref(Gen *g, Expr *e)
 static void gen_expr(Gen *g, Expr *e)
 {
     if (e->is_const && e->type->kind != T_SLICE && !ty_is_aggregate(e->type)) {
+        if (e->type->kind == T_FLOAT && e->type->bits == 32) {
+            li(g, "وسيط٠", (int64_t)(int32_t)(uint32_t)e->cval.mag); /* canonical: sign-extended */
+            return;
+        }
         li(g, "وسيط٠", (int64_t)cv_bits(e->cval));
         return;
     }
@@ -965,6 +1154,15 @@ static void gen_expr(Gen *g, Expr *e)
         gen_expr(g, e->a);
         if (e->tok.kind == K_NOT) {
             ins_imm(g, "أو_حصري_فوري", "وسيط٠", "وسيط٠", 1);
+        } else if (e->tok.kind == K_MINUS && e->type->kind == T_FLOAT) {
+            /* flip the sign bit (bits 31..63 for the sign-extended 32-bit form) */
+            if (e->type->bits == 32) {
+                li(g, "مؤقت٠", -2147483648LL);
+            } else {
+                li(g, "مؤقت٠", 1);
+                ins_imm(g, "رفع_فوري", "مؤقت٠", "مؤقت٠", 63);
+            }
+            ins(g, "أو_حصري", "وسيط٠", "وسيط٠", "مؤقت٠");
         } else if (e->tok.kind == K_MINUS) {
             ins(g, "طرح", "وسيط٠", "صفر", "وسيط٠");
             normalize(g, "وسيط٠", e->type);
@@ -988,7 +1186,9 @@ static void gen_expr(Gen *g, Expr *e)
         gen_expr(g, e->b);
         ins(g, "نسخ", "وسيط١", "وسيط٠", NULL);
         pop(g, "وسيط٠");
-        if (k == K_EQ || k == K_NE || k == K_LT || k == K_GT || k == K_LE || k == K_GE) {
+        if (e->a->type->kind == T_FLOAT) {
+            gen_real_binary(g, k, e->a->type);
+        } else if (k == K_EQ || k == K_NE || k == K_LT || k == K_GT || k == K_LE || k == K_GE) {
             gen_compare(g, k, e->a->type);
         } else {
             gen_arith(g, k, e->type);
@@ -1001,6 +1201,14 @@ static void gen_expr(Gen *g, Expr *e)
         gen_aggregate_literal(g, e);
         return;
     case E_BUILTIN:
+        if (e->tok.kind == K_IS_NAN || e->tok.kind == K_FMA || e->tok.kind == K_ROUND ||
+            e->tok.kind == K_ROUND_NEAREST || e->tok.kind == K_FLOOR || e->tok.kind == K_CEIL ||
+            ((e->tok.kind == K_CONVERT || e->tok.kind == K_TRUNCATE || e->tok.kind == K_REINTERPRET ||
+              e->tok.kind == K_CONVERT_CHECKED) &&
+             (e->type->kind == T_FLOAT || e->a->type->kind == T_FLOAT))) {
+            gen_real_builtin(g, e);
+            return;
+        }
         switch (e->tok.kind) {
         case K_CONVERT:
         case K_TRUNCATE:
@@ -1296,6 +1504,8 @@ static void gen_stmt(Gen *g, Stmt *s)
                     mem_op(g, "حمل_كلمة_مزدوجة", "وسيط٠", "مؤقت٠", 0);
                     mem_op(g, "حمل_كلمة_مزدوجة", "وسيط١", "مؤقت٠", 8);
                 }
+            } else if (rt->kind == T_FLOAT) {
+                to_freg(g, "وسيط_عشري٠", "وسيط٠", rt);
             } else if (is_u32(rt)) {
                 ins_imm(g, "جمع_فوري_كلمة", "وسيط٠", "وسيط٠", 0); /* ABI */
             }
@@ -1326,11 +1536,15 @@ static void gen_function(Gen *g, Decl *d)
      * from its words (saved registers, or the caller's stack area at the
      * frame pointer) */
     {
-        int32_t saved = alloc_slot(g, 64, 8);
+        int nreal = 0, r;
+        int32_t saved;
         ArgPlace *place = arena_alloc(g->prog->arena, (d->nparams + 1) * sizeof *place);
         Type **pts = arena_alloc(g->prog->arena, (d->nparams + 1) * sizeof *pts);
-        int r;
+        for (i = 0; i < d->nparams; i++) nreal += d->params[i]->type->kind == T_FLOAT;
+        /* real parameters arrive in وسيط_عشري…: saved after the integer ones */
+        saved = alloc_slot(g, nreal ? 128 : 64, 8);
         for (r = 0; r < 8; r++) mem_op(g, "خزن_كلمة_مزدوجة", areg[r], "محفوظ٠", saved + 8 * r);
+        for (r = 0; r < 8 && r < nreal; r++) mem_op(g, "خزن_مزدوج", areg[8 + r], "محفوظ٠", saved + 64 + 8 * r);
         if (hidden) {
             g->hidden_ret_slot = alloc_slot(g, 8, 8);
             mem_op(g, "حمل_كلمة_مزدوجة", "مؤقت٠", "محفوظ٠", saved);

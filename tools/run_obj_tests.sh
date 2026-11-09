@@ -64,7 +64,7 @@ for src in "$ROOT"/tests/cc/*.غرة; do
     extra=""
     if [ -f "$ROOT/tests/cc/$name.c" ]; then
         extra="$OUT/$name.c.o"
-        "${PREFIX}gcc" -O1 -march=rv64im -mabi=lp64 -mno-relax -fno-pic -fno-pie -ffreestanding \
+        "${PREFIX}gcc" -O1 -march=rv64imfd -mabi=lp64d -mno-relax -fno-pic -fno-pie -ffreestanding \
             -fno-stack-protector -fno-asynchronous-unwind-tables -fno-unwind-tables -nostdlib \
             -c "$ROOT/tests/cc/$name.c" -o "$extra" || ok=0
     fi

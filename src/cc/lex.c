@@ -30,6 +30,8 @@ static const Keyword keywords[] = {
     {"عنصر_بفحص", K_INDEX_CHECKED}, {"شريحة_بفحص", K_SLICE_CHECKED}, {"شريحة_من", K_SLICE_FROM},
     {"جمع_بفحص", K_ADD_CHECKED}, {"طرح_بفحص", K_SUB_CHECKED}, {"ضرب_بفحص", K_MUL_CHECKED},
     {"جمع_مشبع", K_ADD_SAT}, {"طرح_مشبع", K_SUB_SAT}, {"ضرب_مشبع", K_MUL_SAT},
+    {"قرب", K_ROUND}, {"قرب_لأقرب", K_ROUND_NEAREST}, {"أرضية", K_FLOOR}, {"سقف", K_CEIL},
+    {"ليس_عددا", K_IS_NAN}, {"ضرب_جمع", K_FMA},
 };
 
 const char *kind_text(Kind k)
@@ -39,6 +41,7 @@ const char *kind_text(Kind k)
     case K_EOF: return "نهاية الملف";
     case K_IDENT: return "اسم";
     case K_INT: return "عدد";
+    case K_REAL: return "عدد حقيقي";
     case K_CHAR: return "حرف";
     case K_STRING: return "سلسلة";
     case K_COMMA: return "،";
@@ -130,6 +133,27 @@ static int lex_number(Lx *l)
     size_t start = l->pos;
     NumResult r;
     Tok *t;
+    if (num_real_ahead(l->cps, l->count, l->pos)) {
+        uint64_t b64, b32;
+        int flags = 0;
+        num_parse_real(l->cps, l->count, l->pos, 32, &r, &b32);
+        if (r.err == NUM_ERR_TOO_BIG) flags |= REAL_ERR_BIG32;
+        if (r.err == NUM_ERR_TOO_SMALL) flags |= REAL_ERR_SMALL32;
+        if (r.err == NUM_OK || r.err == NUM_ERR_TOO_BIG || r.err == NUM_ERR_TOO_SMALL) {
+            num_parse_real(l->cps, l->count, l->pos, 64, &r, &b64);
+            if (r.err == NUM_ERR_TOO_BIG) flags |= REAL_ERR_BIG64;
+            if (r.err == NUM_ERR_TOO_SMALL) flags |= REAL_ERR_SMALL64;
+        }
+        if (r.err == NUM_ERR_SEPARATOR) return err(l, r.err_pos, D_NUM_SEPARATOR);
+        if (r.err == NUM_ERR_OVERFLOW) return err(l, r.err_pos, D_NUM_REAL_DIGITS);
+        l->pos = r.end;
+        if (name_char(at(l, 0))) return err(l, l->pos, D_LETTER_AFTER_NUMBER);
+        t = emit(l, K_REAL, start);
+        t->value = b64;
+        t->value32 = b32;
+        t->real_err = flags;
+        return after_word(l);
+    }
     num_parse(l->cps, l->count, l->pos, &r);
     if (r.err != NUM_OK) {
         static const DiagId map[] = {

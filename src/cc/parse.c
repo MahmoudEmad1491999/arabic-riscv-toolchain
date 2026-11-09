@@ -305,6 +305,10 @@ static Expr *parse_primary(Parser *p)
         e->cval = cv_from_u64(t->value);
         next(p);
         return e;
+    case K_REAL:
+        e = new_expr(p, E_REAL, t);
+        next(p);
+        return e;
     case K_CHAR:
         e = new_expr(p, E_CHAR, t);
         next(p);
@@ -363,6 +367,7 @@ static Expr *parse_primary(Parser *p)
         return e;
     }
     case K_CONVERT: case K_CONVERT_CHECKED: case K_TRUNCATE: case K_REINTERPRET:
+    case K_ROUND: case K_ROUND_NEAREST: case K_FLOOR: case K_CEIL:
         e = new_expr(p, E_BUILTIN, t);
         next(p);
         if (expect(p, K_OPEN_PAREN) != 0) return NULL;
@@ -391,6 +396,14 @@ static Expr *parse_primary(Parser *p)
         e = new_expr(p, E_BUILTIN, t);
         next(p);
         return parse_args_into(p, e, 2);
+    case K_IS_NAN:
+        e = new_expr(p, E_BUILTIN, t);
+        next(p);
+        return parse_args_into(p, e, 1);
+    case K_FMA:
+        e = new_expr(p, E_BUILTIN, t);
+        next(p);
+        return parse_args_into(p, e, 3);
     default:
         fail(p, t, D_EXPECTED_EXPR, NULL);
         return NULL;

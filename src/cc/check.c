@@ -145,6 +145,125 @@ static void set_const(Expr *e, ConstVal v)
     e->cval = v;
 }
 
+/* LP64D passes small aggregates holding reals in float registers; that
+ * flattening is not implemented yet, so such values are refused (A84). */
+static int abi_real_ok(const Type *t)
+{
+    return !(ty_is_aggregate(t) && ty_size_of(t) <= 16 && ty_has_real(t));
+}
+
+/* ------------------------------------------------------------------ */
+/* Real constants (decision 68). Folding uses the host's IEEE 754
+ * binary32/binary64 arithmetic, round to nearest even, which is exactly
+ * what the RISC-V instructions compute (the build needs SSE-style
+ * arithmetic: FLT_EVAL_METHOD 0, no contraction). A NaN result is the
+ * RISC-V canonical NaN. */
+
+#define NAN64 0x7FF8000000000000u
+#define NAN32 0x7FC00000u
+
+static double r64(uint64_t b) { double d; memcpy(&d, &b, 8); return d; }
+static float r32(uint64_t b) { uint32_t w = (uint32_t)b; float f; memcpy(&f, &w, 4); return f; }
+static uint64_t b64(double d) { uint64_t b; if (d != d) return NAN64; memcpy(&b, &d, 8); return b; }
+static uint64_t b32(float f) { uint32_t w; if (f != f) return NAN32; memcpy(&w, &f, 4); return w; }
+
+/* the value of a real constant of type t, widened exactly */
+static double real_val(uint64_t bits, const Type *t)
+{
+    return t->bits == 32 ? (double)r32(bits) : r64(bits);
+}
+
+static int real_is_nan(uint64_t bits, const Type *t)
+{
+    double d = real_val(bits, t);
+    return d != d;
+}
+
+/* x rounded to an integral value: mode K_TRUNCATE, K_ROUND_NEAREST (ties
+ * to even), K_FLOOR or K_CEIL. Then checked against the integer type t.
+ * Returns 0 and the bits, or -1 when x is NaN or the result does not fit
+ * (the run-time conversion stops). *exact: no rounding happened. */
+static int real_to_int(double x, Kind mode, const Type *t, uint64_t *out, int *exact)
+{
+    double r, f, lo, hi, two63 = 9223372036854775808.0;
+    int w = t->is_size ? 64 : t->bits;
+    if (x != x || x >= 2 * two63 || x <= -2 * two63) return -1;  /* outside every type */
+    r = (x < two63 && x > -two63) ? (double)(int64_t)x : x;  /* toward zero */
+    f = x - r;
+    if (mode == K_FLOOR && f < 0) r -= 1;
+    if (mode == K_CEIL && f > 0) r += 1;
+    if (mode == K_ROUND_NEAREST) {
+        int odd = r < two63 && r > -two63 && ((int64_t)r & 1) != 0;
+        if (f > 0.5 || (f == 0.5 && odd)) r += 1;
+        if (f < -0.5 || (f == -0.5 && odd)) r -= 1;
+    }
+    *exact = r == x;
+    if (t->is_signed) {
+        lo = -(double)((uint64_t)1 << (w - 1));
+        hi = (double)((uint64_t)1 << (w - 1));
+    } else {
+        lo = 0;
+        hi = w == 64 ? 2 * two63 : (double)((uint64_t)1 << w);
+    }
+    if (!(r >= lo && r < hi)) return -1;
+    if (t->is_signed) *out = (uint64_t)(int64_t)r;
+    else *out = r >= two63 ? (uint64_t)(r - two63) + ((uint64_t)1 << 63) : (uint64_t)r;
+    return 0;
+}
+
+/* integer constant v (exact) to a real of type t, rounded to nearest even */
+static uint64_t int_to_real(ConstVal v, const Type *t, int *exact)
+{
+    double d = (double)v.mag;
+    float f = (float)v.mag;
+    double back = t->bits == 32 ? (double)f : d;
+    *exact = back < 18446744073709551616.0 && (uint64_t)back == v.mag;
+    if (t->bits == 32) return b32(v.neg ? -f : f);
+    return b64(v.neg ? -d : d);
+}
+
+/* real constant to real type t */
+static uint64_t real_to_real(uint64_t bits, const Type *from, const Type *t, int *exact)
+{
+    double d = real_val(bits, from);
+    if (t->bits == 64) { *exact = 1; return b64(d); }
+    *exact = d != d || (double)(float)d == d;
+    return b32((float)d);
+}
+
+/* + - * / on two real constants of type t */
+static uint64_t real_arith(Kind k, uint64_t x, uint64_t y, const Type *t)
+{
+    if (t->bits == 32) {
+        float a = r32(x), b = r32(y);
+        return b32(k == K_PLUS ? a + b : k == K_MINUS ? a - b : k == K_STAR ? a * b : a / b);
+    } else {
+        double a = r64(x), b = r64(y);
+        return b64(k == K_PLUS ? a + b : k == K_MINUS ? a - b : k == K_STAR ? a * b : a / b);
+    }
+}
+
+/* gives a real literal (or the negation of one) the type t */
+static int settle_real(Expr *e, Type *t)
+{
+    uint64_t sign = t->bits == 32 ? 0x80000000u : (uint64_t)1 << 63;
+    if (e->kind == E_UNARY) {
+        if (settle_real(e->a, t) != 0) return -1;
+        e->type = t;
+        set_const(e, cv_from_u64(e->a->cval.mag ^ sign));
+        return 0;
+    }
+    if (e->tok.real_err & (t->bits == 32 ? REAL_ERR_BIG32 : REAL_ERR_BIG64)) {
+        return err(&e->tok, D_CC_REAL_TOO_BIG, ty_name(t));
+    }
+    if (e->tok.real_err & (t->bits == 32 ? REAL_ERR_SMALL32 : REAL_ERR_SMALL64)) {
+        return err(&e->tok, D_CC_REAL_TOO_SMALL, ty_name(t));
+    }
+    e->type = t;
+    set_const(e, cv_from_u64(t->bits == 32 ? e->tok.value32 : e->tok.value));
+    return 0;
+}
+
 /* ------------------------------------------------------------------ */
 /* Scopes                                                              */
 
@@ -242,7 +361,7 @@ static Type *self_type(Ctx *c, Decl *d)
 static int volatile_ok(const Type *t)
 {
     switch (t->kind) {
-    case T_INT: case T_BOOL: case T_CHAR: case T_ENUM: case T_PTR: case T_OPT: case T_FUNC:
+    case T_INT: case T_BOOL: case T_CHAR: case T_ENUM: case T_PTR: case T_OPT: case T_FUNC: case T_FLOAT:
         return 1;
     default:
         return 0;
@@ -309,6 +428,13 @@ static Type *resolve_type(Ctx *c, Type *t, int by_value)
         if (t->elem != NULL) {
             t->elem = resolve_type(c, t->elem, 1);
             if (t->elem == NULL) return NULL;
+        }
+        for (i = 0; i <= t->nparams; i++) {
+            Type *pt = i < t->nparams ? t->params[i] : t->elem;
+            if (pt != NULL && !abi_real_ok(pt)) {
+                err(&t->tok, D_CC_REAL_AGGREGATE, NULL);
+                return NULL;
+            }
         }
         return t;
     default:
@@ -411,7 +537,7 @@ static int resolve_enum(Ctx *c, Decl *d)
 static int const_type_ok(const Type *t)
 {
     return t->kind == T_INT || t->kind == T_BOOL || t->kind == T_CHAR || t->kind == T_ENUM ||
-           (t->kind == T_SLICE && ty_equal(t, ty_string));
+           t->kind == T_FLOAT || (t->kind == T_SLICE && ty_equal(t, ty_string));
 }
 
 static int resolve_const(Ctx *c, Decl *d)
@@ -468,6 +594,14 @@ static int resolve_signature(Ctx *c, Decl *d)
         if (d->ret == NULL) { use_module(c, saved); return -1; }
     }
     ft->elem = d->ret;
+    for (i = 0; i <= d->nparams; i++) {
+        Type *pt = i < d->nparams ? d->params[i]->type : d->ret;
+        if (pt != NULL && !abi_real_ok(pt)) {
+            err(i < d->nparams ? &d->params[i]->tok : &d->tok, D_CC_REAL_AGGREGATE, NULL);
+            use_module(c, saved);
+            return -1;
+        }
+    }
     d->func_type = ft;
     use_module(c, saved);
     return 0;
@@ -499,6 +633,10 @@ static int coerce(Ctx *c, Expr *e, Type *t)
     if (e->type == NULL) return -1;
     if (t == NULL || t->kind == T_VOID) return err(&e->tok, D_CC_VOID_VALUE, NULL);
     if (e->type->kind == T_VOID) return err(&e->tok, D_CC_VOID_VALUE, NULL);
+    if (e->type->kind == T_UNTYPED_REAL) {
+        if (t->kind != T_FLOAT) return err(&e->tok, D_CC_TYPE_MISMATCH, ty_name(t));
+        return settle_real(e, t);
+    }
     if (e->type->kind == T_UNTYPED) {
         if (t->kind != T_INT) return err(&e->tok, D_CC_TYPE_MISMATCH, ty_name(t));
         if (!cv_fits(e->cval, t)) return err(&e->tok, D_CC_NOT_FIT, ty_name(t));
@@ -797,6 +935,84 @@ static int int_fits_all(const Type *from, const Type *to)
     return fbits < tbits; /* unsigned into signed needs one more bit */
 }
 
+/* Conversions that involve a real number (decision 66). ft is the
+ * operand's type, t the target; the operand is checked already.
+ *   حول        exact by type: حقيقي٢٣ to حقيقي٤٦, small integers to reals
+ *   قرب        to a real, rounded to nearest even
+ *   حول_بفحص   between reals and integers; stops if the value changes
+ *   اقتطع / قرب_لأقرب / أرضية / سقف   real to integer with that rounding;
+ *              stops on NaN or when the result does not fit
+ *   اعتبر      the same bits, between a real and an integer of its size */
+static int check_real_convert(Ctx *c, Expr *e, Type *t)
+{
+    Kind k = e->tok.kind;
+    Expr *a = e->a;
+    Type *ft = a->type;
+    int ok = 0, exact = 1;
+    uint64_t r = 0;
+    int to_int = k == K_TRUNCATE || k == K_ROUND_NEAREST || k == K_FLOOR || k == K_CEIL;
+
+    if (ft->kind == T_UNTYPED_REAL) {
+        if (t->kind != T_FLOAT || (k != K_CONVERT && k != K_ROUND && k != K_CONVERT_CHECKED)) {
+            return err(&e->tok, D_CC_BAD_CONVERSION, NULL);
+        }
+        if (coerce(c, a, t) != 0) return -1;
+        e->type = t;
+        set_const(e, a->cval);
+        return 0;
+    }
+    if (ft->kind == T_UNTYPED) {
+        /* an integer literal to a real */
+        if (t->kind != T_FLOAT || (k != K_CONVERT && k != K_ROUND && k != K_CONVERT_CHECKED)) {
+            return err(&e->tok, D_CC_BAD_CONVERSION, NULL);
+        }
+        r = int_to_real(a->cval, t, &exact);
+        if (!exact && k != K_ROUND) return err(&a->tok, D_CC_NOT_FIT, ty_name(t));
+        a->type = a->cval.neg ? ty_int(64, 1) : ty_int(64, 0);
+        e->type = t;
+        set_const(e, cv_from_u64(r));
+        return 0;
+    }
+    if (to_int) {
+        ok = ft->kind == T_FLOAT && t->kind == T_INT;
+    } else if (k == K_REINTERPRET) {
+        ok = (ft->kind == T_FLOAT && t->kind == T_INT && !t->is_size && t->bits == ft->bits) ||
+             (ft->kind == T_INT && !ft->is_size && t->kind == T_FLOAT && t->bits == ft->bits);
+    } else if (t->kind == T_FLOAT) {
+        if (ft->kind == T_FLOAT) {
+            ok = k == K_ROUND || k == K_CONVERT_CHECKED || ft->bits <= t->bits;
+        } else if (ft->kind == T_INT) {
+            /* حول: every value of the integer type is exact in the real */
+            int ibits = ft->is_size ? 64 : ft->bits;
+            ok = k == K_ROUND || k == K_CONVERT_CHECKED || ibits <= (t->bits == 32 ? 16 : 32);
+        }
+    } else if (k == K_CONVERT_CHECKED) {
+        ok = ft->kind == T_FLOAT && t->kind == T_INT;
+    }
+    if (!ok) return err(&e->tok, D_CC_BAD_CONVERSION, NULL);
+    e->type = t;
+    if (!a->is_const) return 0;
+
+    if (k == K_REINTERPRET) {
+        set_const(e, t->kind == T_FLOAT ? cv_from_u64(cv_bits(a->cval) & (t->bits == 32 ? 0xFFFFFFFFu : ~(uint64_t)0))
+                                        : cv_wrap(a->cval.mag, t));
+        return 0;
+    }
+    if (ft->kind == T_FLOAT && t->kind == T_INT) {
+        if (real_to_int(real_val(a->cval.mag, ft), k == K_CONVERT_CHECKED ? K_TRUNCATE : k, t, &r, &exact) != 0 ||
+            (k == K_CONVERT_CHECKED && !exact)) {
+            return err(&a->tok, D_CC_NOT_FIT, ty_name(t));
+        }
+        set_const(e, cv_wrap(r, t));
+        return 0;
+    }
+    if (ft->kind == T_FLOAT) r = real_to_real(a->cval.mag, ft, t, &exact);
+    else r = int_to_real(a->cval, t, &exact);
+    if (k == K_CONVERT_CHECKED && !exact) return err(&a->tok, D_CC_NOT_FIT, ty_name(t));
+    set_const(e, cv_from_u64(r));
+    return 0;
+}
+
 static int check_builtin(Ctx *c, Expr *e, Type *want)
 {
     Kind k = e->tok.kind;
@@ -812,6 +1028,36 @@ static int check_builtin(Ctx *c, Expr *e, Type *want)
         e->type = ty_size;
         set_const(e, cv_from_u64(k == K_SIZEOF ? ty_size_of(t) : ty_align_of(t)));
         return 0;
+    case K_IS_NAN: {
+        Expr *a = e->args[0];
+        if (check_expr(c, a, NULL) != 0) return -1;
+        if (!ty_is_real(a->type)) return err(&a->tok, D_CC_NEED_REAL, NULL);
+        e->type = ty_bool;
+        if (a->is_const) set_const(e, cv_from_u64((uint64_t)real_is_nan(a->cval.mag, a->type)));
+        return 0;
+    }
+    case K_FMA: {
+        /* ضرب_جمع(أ، ب، ج) = أ × ب + ج rounded once (decision 68); never folded */
+        size_t i;
+        Type *rt = NULL;
+        for (i = 0; i < 3; i++) {
+            if (check_expr(c, e->args[i], want) != 0) return -1;
+            if (ty_is_real(e->args[i]->type)) rt = e->args[i]->type;
+        }
+        if (rt == NULL && want != NULL && ty_is_real(want)) rt = want;
+        if (rt == NULL) return err(&e->tok, D_CC_NEED_REAL_TYPE, NULL);
+        for (i = 0; i < 3; i++) {
+            if (coerce(c, e->args[i], rt) != 0) return -1;
+        }
+        e->type = rt;
+        return 0;
+    }
+    case K_ROUND:
+    case K_ROUND_NEAREST:
+    case K_FLOOR:
+    case K_CEIL:
+        if (check_expr(c, e->a, NULL) != 0) return -1;
+        return check_real_convert(c, e, t);
     case K_CONVERT:
     case K_CONVERT_CHECKED:
     case K_TRUNCATE:
@@ -819,6 +1065,9 @@ static int check_builtin(Ctx *c, Expr *e, Type *want)
         int ok = 0;
         if (check_expr(c, e->a, NULL) != 0) return -1;
         ft = e->a->type;
+        if (ft->kind == T_FLOAT || ft->kind == T_UNTYPED_REAL || t->kind == T_FLOAT) {
+            return check_real_convert(c, e, t);
+        }
         if (ft->kind == T_UNTYPED && t->kind == T_CHAR && k != K_REINTERPRET) {
             if (e->a->cval.neg || e->a->cval.mag > 0x10FFFF ||
                 (e->a->cval.mag >= 0xD800 && e->a->cval.mag <= 0xDFFF)) {
@@ -984,6 +1233,15 @@ static int check_binary(Ctx *c, Expr *e, Type *want)
         Type *operand_want = cmp ? NULL : want;
         Type *t;
         if (check_expr(c, a, operand_want) != 0 || check_expr(c, b, operand_want) != 0) return -1;
+        /* real literals take the other side's type, or the wanted one */
+        if (a->type->kind == T_UNTYPED_REAL && b->type->kind == T_UNTYPED_REAL) {
+            if (cmp || want == NULL || !ty_is_real(want)) return err(&e->tok, D_CC_NEED_REAL_TYPE, NULL);
+            if (coerce(c, a, want) != 0 || coerce(c, b, want) != 0) return -1;
+        } else if (a->type->kind == T_UNTYPED_REAL) {
+            if (coerce(c, a, b->type) != 0) return -1;
+        } else if (b->type->kind == T_UNTYPED_REAL) {
+            if (coerce(c, b, a->type) != 0) return -1;
+        }
         /* untyped constants take the other side's type */
         if (a->type->kind == T_UNTYPED && b->type->kind == T_UNTYPED) {
             if (!cmp && want != NULL && ty_is_int(want) &&
@@ -1035,13 +1293,21 @@ static int check_binary(Ctx *c, Expr *e, Type *want)
                      (a->type->kind == T_PTR && b->type->kind == T_PTR && ty_equal(a->type->elem, b->type->elem)) ||
                      (a->type->kind == T_OPT && b->type->kind == T_OPT && ty_equal(a->type->elem->elem, b->type->elem->elem));
             if (!ok) return err(&e->tok, D_CC_MIXED_TYPES, ty_name(a->type));
-            if (ordered ? !(t->kind == T_INT || t->kind == T_CHAR)
-                        : !(t->kind == T_INT || t->kind == T_CHAR || t->kind == T_BOOL ||
+            if (ordered ? !(t->kind == T_INT || t->kind == T_CHAR || t->kind == T_FLOAT)
+                        : !(t->kind == T_INT || t->kind == T_CHAR || t->kind == T_BOOL || t->kind == T_FLOAT ||
                             t->kind == T_ENUM || t->kind == T_PTR || t->kind == T_OPT)) {
                 return err(&e->tok, D_CC_NO_EQUALITY, NULL);
             }
             e->type = ty_bool;
-            if (a->is_const && b->is_const && t->kind != T_PTR && t->kind != T_OPT) {
+            if (a->is_const && b->is_const && t->kind == T_FLOAT) {
+                /* decision 67: comparing a NaN stops the program; known now, so an error */
+                double x = real_val(a->cval.mag, t), y = real_val(b->cval.mag, t);
+                int v;
+                if (x != x || y != y) return err(&e->tok, D_CC_NAN_COMPARE, NULL);
+                v = k == K_EQ ? x == y : k == K_NE ? x != y : k == K_LT ? x < y :
+                    k == K_GT ? x > y : k == K_LE ? x <= y : x >= y;
+                set_const(e, cv_from_u64((uint64_t)v));
+            } else if (a->is_const && b->is_const && t->kind != T_PTR && t->kind != T_OPT) {
                 int64_t x = (int64_t)cv_bits(a->cval), y = (int64_t)cv_bits(b->cval);
                 uint64_t ux = cv_bits(a->cval), uy = cv_bits(b->cval);
                 int sg = t->kind == T_INT && t->is_signed;
@@ -1050,6 +1316,16 @@ static int check_binary(Ctx *c, Expr *e, Type *want)
                 int v = k == K_EQ ? eq : k == K_NE ? !eq : k == K_LT ? less :
                         k == K_GT ? (!less && !eq) : k == K_LE ? (less || eq) : !less;
                 set_const(e, cv_from_u64((uint64_t)v));
+            }
+            return 0;
+        }
+        if (ty_is_real(t) && ty_equal(a->type, b->type)) {
+            if (k != K_PLUS && k != K_MINUS && k != K_STAR && k != K_SLASH) {
+                return err(&e->tok, D_CC_REAL_OP, NULL);
+            }
+            e->type = t;
+            if (a->is_const && b->is_const) {
+                set_const(e, cv_from_u64(real_arith(k, a->cval.mag, b->cval.mag, t)));
             }
             return 0;
         }
@@ -1076,6 +1352,18 @@ static int check_unary(Ctx *c, Expr *e, Type *want)
         if (a->type->kind == T_UNTYPED) {
             e->type = ty_untyped;
             set_const(e, cv_make(!a->cval.neg, a->cval.mag));
+            return 0;
+        }
+        if (a->type->kind == T_UNTYPED_REAL) {
+            e->type = ty_untyped_real;
+            return 0;
+        }
+        if (ty_is_real(a->type)) {
+            /* exact: only the sign bit changes, NaN included */
+            e->type = a->type;
+            if (a->is_const) {
+                set_const(e, cv_from_u64(a->cval.mag ^ (a->type->bits == 32 ? 0x80000000u : (uint64_t)1 << 63)));
+            }
             return 0;
         }
         if (!ty_is_int(a->type) || !a->type->is_signed) return err(&e->tok, D_CC_NEED_INT, NULL);
@@ -1148,6 +1436,9 @@ static int check_expr(Ctx *c, Expr *e, Type *want)
     case E_CHAR:
         e->type = ty_char;
         set_const(e, cv_from_u64(e->tok.value));
+        return 0;
+    case E_REAL:
+        e->type = ty_untyped_real;
         return 0;
     case E_BOOL:
         e->type = ty_bool;

@@ -77,3 +77,11 @@
 - [x] Linker in غرة (`مصدر/رابط.غرة`, `مصدر/الربط/`), byte-identical to `رابط`: the link tests and link-error tests from our objects and from ELF objects, each in all three modes (hosted, `--عاري`, `--برنامج`), every compiler test linked with the runtime and the library, an OS program, the assembler and the linker linked again from their own objects; the same errors in both diagnostic orders and on damaged objects of both formats (`make port`). On our OS the boot test links the assembled example with `أدوات/رابط --برنامج` and shows it with `أدوات/عارض`, the same as on Linux
 - [x] Compiler in غرة (`مصدر/مترجم.غرة`, `مصدر/الترجمة/`), byte-identical to `مترجم`: the same assembly for every compiler test, the OS and the ported tools; the same errors on every error test in both diagnostic orders and on damaged sources; in build mode the same objects and executables for every compiler test, the kernel (`--عاري`) and an OS program (`--برنامج`) (`make port`). On our OS the boot test compiles `صدى` with `أدوات/مترجم` and runs the result
 - [x] Stage 2 = stage 3: `make port` builds `مصدر/مترجم.غرة` with the C compiler (stage 2) and with the غرة compiler (stage 3) from clean copies, and every object and the executable are identical
+
+### Phase 7 (decisions 64–69)
+
+- [x] Assembler: the F and D extensions (A83), checked against GNU as
+- [x] Compiler: `حقيقي٢٣` / `حقيقي٤٦`, correctly rounded literals, `+ - * /`, comparisons that stop on NaN, `ليس_عددا`، `ضرب_جمع`, the explicit conversions (`حول`، `قرب`، `حول_بفحص`، `اقتطع`، `قرب_لأقرب`، `أرضية`، `سقف`، `اعتبر`), folding equal to run time, the LP64D scalar ABI (A84); tested against GCC objects; ported to غرة byte-identically, stage 2 = stage 3 still holds
+- [ ] OS: floating-point state per process (FS bits, f0–f31 and fcsr saved and restored)
+- [ ] Debug format `تنقيح` (decision 64): object format v2, assembler directives, linker merge and the `.تنقيح` ELF section, `عارض`, compiler emission, file:line and call chain at run-time stops, port
+- [ ] LP64D flattening for small structures with reals

@@ -25,6 +25,7 @@ static const char *const diag_text[D_COUNT] = {
     [D_NUM_BAD_DIGIT]       = "رقم أكبر من الأساس",
     [D_NUM_SEPARATOR]       = "فاصل الآلاف في غير موضعه",
     [D_NUM_OVERFLOW]        = "الرقم كبير جدا",
+    [D_NUM_REAL_DIGITS]     = "العدد الحقيقي فيه أرقام كثيرة جدا",
     [D_LETTER_AFTER_NUMBER] = "حرف ملتصق بالرقم",
     [D_UNTERMINATED_STRING] = "سلسلة غير منتهية",
     [D_BAD_ESCAPE]          = "تسلسل هروب غير معروف",
@@ -147,6 +148,13 @@ static const char *const diag_text[D_COUNT] = {
     [D_CC_VOLATILE_TYPE] = "متطاير يكون لعدد أو منطقي أو حرف أو تعداد أو مؤشر أو دالة فقط، بحجم ١ أو ٢ أو ٤ أو ٨ بايت",
     [D_CC_VOLATILE_PLACE] = "متطاير يكون لمتغير عام أو لما يشير إليه مؤشر فقط",
     [D_CC_PACKED_ADDR] = "لا يمكن أخذ عنوان أو شريحة من حقل في بنية مضغوطة، فقد لا يكون محاذى",
+    [D_CC_REAL_TOO_BIG] = "العدد الحقيقي لا يتسع في النوع:",
+    [D_CC_REAL_TOO_SMALL] = "العدد الحقيقي ليس صفرا لكنه يصير صفرا في النوع:",
+    [D_CC_NEED_REAL_TYPE] = "عددان حقيقيان بلا نوع: حدد النوع بتحويل أو بمتغير",
+    [D_CC_NEED_REAL] = "متوقع عدد حقيقي",
+    [D_CC_NAN_COMPARE] = "مقارنة بقيمة ليست عددا",
+    [D_CC_REAL_OP] = "هذه العملية لا تكون على الأعداد الحقيقية",
+    [D_CC_REAL_AGGREGATE] = "تمرير بنية أو مصفوفة صغيرة فيها عدد حقيقي بالقيمة غير مدعوم بعد",
 };
 
 static const char *diag_file = "";
