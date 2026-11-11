@@ -14,19 +14,20 @@ Decided names (decision 33): extension `.كائن`; viewer tool `عارض`; symb
 
 | Region | Size | Contents |
 |---|---|---|
-| Header | 80 bytes | see below |
+| Header | 88 bytes | see below |
 | Section contents | text, data, rodata sizes | the bytes of `نص`، `بيانات`، `ثوابت` in this order; `أصفار` (bss) has no bytes |
 | Symbols | 24 × nsyms | symbol entries |
 | Relocations | 24 × nrelocs | relocation entries |
 | Names | names_size | the UTF-8 names, back to back |
 | Interface | interface_size | module interface (see below; 0 for hand-written assembly) |
+| Debug | debug_size | debug information `تنقيح` (see below; 0 if none), at an 8-byte boundary |
 
 Header:
 
 | Offset | Size | Field |
 |---|---|---|
 | 0 | 8 | magic: the UTF-8 bytes of `كائن` |
-| 8 | 4 | format version (1) |
+| 8 | 4 | format version (2; version 1 had no debug region and is no longer read) |
 | 12 | 4 | flags (0) |
 | 16 | 4 × 8 | size of text, data, rodata, bss |
 | 48 | 4 × 4 | alignment of text, data, rodata, bss (power of two, at most 4096) |
@@ -34,6 +35,8 @@ Header:
 | 68 | 4 | nrelocs |
 | 72 | 4 | names_size |
 | 76 | 4 | interface_size |
+| 80 | 4 | debug_size |
+| 84 | 4 | reserved (0) |
 
 The file length must equal the sum of the regions exactly; the reader rejects anything else.
 
@@ -101,6 +104,44 @@ The text is غرة source, in file order like every source file: the module's `�
 
 - **Importing a compiled module:** when `a/b.غرة` is not found, the compiler looks for `a/b.كائن` in the same search paths, then in the libraries given on the command line, and parses the interface text.
 - **Stale objects:** `رابط` compares, for every object with an interface, the recorded hash of each import with the interface hash of the object that provides that module. A mismatch is an error naming the module and the stale object. The same module twice in one link is an error.
+
+## Debug information (the Debug region, decision 64)
+
+Tables of fixed-size rows that refer to each other by index; no attribute forms, no bytecode, no state machine. Every name is (offset, length) into the region's own names. `بلا` (0xFFFFFFFF) is the "none" index. A code position is an offset into this object's `نص`; in an executable (and in the `.تنقيح` section of a hosted ELF executable) it is an address. Symbol indexes refer to this object's symbol table (or are `بلا`).
+
+Region header (48 bytes): the row count of each of the 9 tables below (9 × u32), names_size u32, 8 reserved bytes (0). Then the tables in this order, then the names.
+
+| # | Table | Row | Fields |
+|---|---|---|---|
+| 0 | Files | 16 | name_off u32, name_len u32, FNV-1a hash of the file's bytes u64 |
+| 1 | Lines | 24 | code u64, file u32, line u32, column u32, reserved u32. In code order; a row covers the code up to the next row |
+| 2 | Functions | 48 | name_off, name_len, symbol u32, file u32, start u64, end u64, line u32, frame size u32, result type u32 (or بلا), reserved u32 |
+| 3 | Scopes | 24 | function u32, parent scope u32 (or بلا; parents come before their children), start u64, end u64 |
+| 4 | Variables | 32 | name_off, name_len, type u32, scope u32, kind u8 (0 parameter, 1 local, 2 global), 7 reserved bytes, where i64: the offset from `محفوظ٠` for parameters and locals, the symbol index for globals (whose scope is بلا) |
+| 5 | Types | 32 | kind u8, flags u8, reserved u16, name_off u32, name_len u32, a u32, b u64, c u32, d u32 |
+| 6 | Fields | 24 | name_off, name_len, type u32, reserved u32, offset u64 |
+| 7 | Members | 16 | name_off, name_len, value i64 |
+| 8 | Parameters | 8 | type u32, reserved u32 (the parameter types of function types) |
+
+Type kinds and the meaning of a, b, c, d (unused ones are 0; only structures and enumerations have a name):
+
+| Kind | Name | a | b | c, d |
+|---|---|---|---|---|
+| 1 | integer | width in bits | | |
+| 2 | boolean | | | |
+| 3 | character | | | |
+| 4 | real | width in bits | | |
+| 5 | pointer | target type | | |
+| 6 | optional pointer | the pointer type | | |
+| 7 | array | element type | count | |
+| 8 | slice | element type | | |
+| 9 | structure | alignment | size | first field, field count |
+| 10 | enumeration | underlying type | | first member, member count |
+| 11 | function | result type (or بلا) | | first parameter, parameter count |
+
+Flags: 1 signed, 2 `حجم`, 4 `ثابت`, 8 `متطاير`, 16 packed. Function frames are always the standard one (frame pointer `محفوظ٠`, return address at −8, the caller's frame pointer at −16), so there are no unwinding rules.
+
+`عارض` prints one line per row after the interface: `تنقيح ملف`، `تنقيح سطر`، `تنقيح دالة`، `تنقيح نطاق`، `تنقيح متغير`، `تنقيح نوع`، `تنقيح حقل`، `تنقيح عضو`، `تنقيح معامل`.
 
 ## Executables (decision 53)
 

@@ -89,6 +89,131 @@ void obj_iface_import(const ObjIface *f, uint32_t i, const uint8_t **name, uint3
     *hash = rd64(p + 4 + *len);
 }
 
+/* ------------------------------------------------------------------ */
+/* The debug region (decision 64)                                      */
+
+const uint32_t obj_dbg_row[OBJ_DBG_NTABLES] = {16, 24, 48, 24, 32, 32, 24, 16, 8};
+
+const uint8_t *obj_debug_row(const ObjDebug *d, int t, uint32_t i)
+{
+    return d->data + d->table_off[t] + (uint64_t)i * obj_dbg_row[t];
+}
+
+const uint8_t *obj_debug_name(const ObjDebug *d, uint32_t off)
+{
+    return d->data + d->names_off + off;
+}
+
+/* index i of table t, or OBJ_DBG_NONE when allowed */
+static int dbg_ref(const ObjDebug *d, int t, uint32_t i, int none_ok)
+{
+    return (none_ok && i == OBJ_DBG_NONE) || i < d->count[t];
+}
+
+static int dbg_name(const ObjDebug *d, const uint8_t *row)
+{
+    return (uint64_t)rd32(row) + rd32(row + 4) <= d->names_size;
+}
+
+static int dbg_code(uint64_t start, uint64_t end, uint64_t text_size, int addresses)
+{
+    return start <= end && (addresses || end <= text_size);
+}
+
+int obj_debug_decode(const uint8_t *data, size_t len, uint64_t text_size, int addresses,
+                     uint32_t nsyms, ObjDebug *g)
+{
+    uint64_t pos = OBJ_DBG_HEADER;
+    uint32_t i;
+    int t;
+
+    memset(g, 0, sizeof *g);
+    if (len < OBJ_DBG_HEADER || rd64(data + 40) != 0) return -1;
+    g->data = data;
+    g->len = len;
+    for (t = 0; t < OBJ_DBG_NTABLES; t++) {
+        g->count[t] = rd32(data + 4 * (uint32_t)t);
+        g->table_off[t] = pos;
+        pos += (uint64_t)g->count[t] * obj_dbg_row[t];
+        if (pos > len) return -1;
+    }
+    g->names_size = rd32(data + 36);
+    g->names_off = pos;
+    if (pos + g->names_size != len) return -1;
+
+    for (i = 0; i < g->count[OBJ_DBG_FILES]; i++) {
+        if (!dbg_name(g, obj_debug_row(g, OBJ_DBG_FILES, i))) return -1;
+    }
+    for (i = 0; i < g->count[OBJ_DBG_LINES]; i++) {
+        const uint8_t *r = obj_debug_row(g, OBJ_DBG_LINES, i);
+        if (!dbg_ref(g, OBJ_DBG_FILES, rd32(r + 8), 0) || rd32(r + 20) != 0 ||
+            !dbg_code(rd64(r), rd64(r), text_size, addresses)) return -1;
+        if (i > 0 && rd64(r) < rd64(r - obj_dbg_row[OBJ_DBG_LINES])) return -1; /* in code order */
+    }
+    for (i = 0; i < g->count[OBJ_DBG_FUNCS]; i++) {
+        const uint8_t *r = obj_debug_row(g, OBJ_DBG_FUNCS, i);
+        if (!dbg_name(g, r) || !dbg_ref(g, OBJ_DBG_FILES, rd32(r + 12), 0) ||
+            (rd32(r + 8) != OBJ_DBG_NONE && rd32(r + 8) >= nsyms) ||
+            !dbg_code(rd64(r + 16), rd64(r + 24), text_size, addresses) ||
+            !dbg_ref(g, OBJ_DBG_TYPES, rd32(r + 40), 1) || rd32(r + 44) != 0) return -1;
+    }
+    for (i = 0; i < g->count[OBJ_DBG_SCOPES]; i++) {
+        const uint8_t *r = obj_debug_row(g, OBJ_DBG_SCOPES, i);
+        if (!dbg_ref(g, OBJ_DBG_FUNCS, rd32(r), 0) || !dbg_ref(g, OBJ_DBG_SCOPES, rd32(r + 4), 1) ||
+            (rd32(r + 4) != OBJ_DBG_NONE && rd32(r + 4) >= i) ||   /* parents come first */
+            !dbg_code(rd64(r + 8), rd64(r + 16), text_size, addresses)) return -1;
+    }
+    for (i = 0; i < g->count[OBJ_DBG_VARS]; i++) {
+        const uint8_t *r = obj_debug_row(g, OBJ_DBG_VARS, i);
+        uint8_t kind = r[16];
+        if (!dbg_name(g, r) || !dbg_ref(g, OBJ_DBG_TYPES, rd32(r + 8), 0) ||
+            kind > OBJ_VAR_GLOBAL || r[17] || r[18] || r[19] || rd32(r + 20) != 0) return -1;
+        if (kind == OBJ_VAR_GLOBAL && rd64(r + 24) != OBJ_DBG_NONE && rd64(r + 24) >= nsyms) return -1;
+        if (kind == OBJ_VAR_GLOBAL ? rd32(r + 12) != OBJ_DBG_NONE
+                                   : !dbg_ref(g, OBJ_DBG_SCOPES, rd32(r + 12), 1)) return -1;
+    }
+    for (i = 0; i < g->count[OBJ_DBG_TYPES]; i++) {
+        const uint8_t *r = obj_debug_row(g, OBJ_DBG_TYPES, i);
+        uint8_t kind = r[0];
+        uint32_t a = rd32(r + 12), c = rd32(r + 24), n = rd32(r + 28);
+        int ok = kind >= OBJ_TY_INT && kind <= OBJ_TY_LAST && (r[1] & ~OBJ_TYF_ALL) == 0 &&
+                 r[2] == 0 && r[3] == 0 && dbg_name(g, r + 4);
+        switch (kind) {
+        case OBJ_TY_PTR: case OBJ_TY_OPT: case OBJ_TY_ARRAY: case OBJ_TY_SLICE: case OBJ_TY_ENUM:
+            ok = ok && dbg_ref(g, OBJ_DBG_TYPES, a, 0);
+            break;
+        case OBJ_TY_FUNC:
+            ok = ok && dbg_ref(g, OBJ_DBG_TYPES, a, 1);
+            break;
+        default:
+            break;
+        }
+        if (kind == OBJ_TY_STRUCT) ok = ok && (uint64_t)c + n <= g->count[OBJ_DBG_FIELDS];
+        if (kind == OBJ_TY_ENUM) ok = ok && (uint64_t)c + n <= g->count[OBJ_DBG_MEMBERS];
+        if (kind == OBJ_TY_FUNC) ok = ok && (uint64_t)c + n <= g->count[OBJ_DBG_PARAMS];
+        if (!ok) return -1;
+    }
+    for (i = 0; i < g->count[OBJ_DBG_FIELDS]; i++) {
+        const uint8_t *r = obj_debug_row(g, OBJ_DBG_FIELDS, i);
+        if (!dbg_name(g, r) || !dbg_ref(g, OBJ_DBG_TYPES, rd32(r + 8), 0) || rd32(r + 12) != 0) return -1;
+    }
+    for (i = 0; i < g->count[OBJ_DBG_MEMBERS]; i++) {
+        if (!dbg_name(g, obj_debug_row(g, OBJ_DBG_MEMBERS, i))) return -1;
+    }
+    for (i = 0; i < g->count[OBJ_DBG_PARAMS]; i++) {
+        const uint8_t *r = obj_debug_row(g, OBJ_DBG_PARAMS, i);
+        if (!dbg_ref(g, OBJ_DBG_TYPES, rd32(r), 0) || rd32(r + 4) != 0) return -1;
+    }
+    return 0;
+}
+
+int obj_debug(const ObjView *v, ObjDebug *out)
+{
+    if (v->debug_size == 0) return -1;
+    return obj_debug_decode(v->file + v->debug_off, (size_t)v->debug_size, v->size[OBJ_SEC_TEXT],
+                            (v->flags & OBJ_FLAG_EXECUTABLE) != 0, v->nsyms, out);
+}
+
 int obj_iface(const ObjView *v, ObjIface *out)
 {
     if (v->iface_size == 0) return -1;
@@ -119,6 +244,8 @@ void obj_serialize(const ObjOut *o, Buf *out)
     buf_u32(out, (uint32_t)o->nrelocs);
     buf_u32(out, (uint32_t)names.len);
     buf_u32(out, (uint32_t)o->iface_len);
+    buf_u32(out, (uint32_t)o->debug_len);
+    buf_u32(out, 0);
 
     for (k = 0; k < OBJ_SEC_BSS; k++) {
         buf_align(out, 8);
@@ -154,6 +281,10 @@ void obj_serialize(const ObjOut *o, Buf *out)
     buf_bytes(out, names.data, names.len);
     if (o->iface_len != 0) {
         buf_bytes(out, o->iface, o->iface_len);
+    }
+    if (o->debug_len != 0) {
+        buf_align(out, 8);
+        buf_bytes(out, o->debug, o->debug_len);
     }
     buf_free(&names);
 }
@@ -195,6 +326,10 @@ int obj_parse(const uint8_t *d, size_t len, ObjView *v)
     v->nrelocs = rd32(d + 68);
     v->names_size = rd32(d + 72);
     v->iface_size = rd32(d + 76);
+    v->debug_size = rd32(d + 80);
+    if (rd32(d + 84) != 0) {
+        return -1;
+    }
     pos = OBJ_HEADER_SIZE;
     for (k = 0; k < OBJ_SEC_BSS; k++) {
         pos = up8(pos);
@@ -213,12 +348,24 @@ int obj_parse(const uint8_t *d, size_t len, ObjView *v)
     pos += v->names_size;
     v->iface_off = pos;
     pos += v->iface_size;
+    if (v->debug_size != 0) {
+        pos = up8(pos);
+    }
+    v->debug_off = pos;
+    pos += v->debug_size;
     if (pos != len) {
         return -1;
     }
     if (v->iface_size != 0) {
         ObjIface f;
         if (obj_iface_decode(d + v->iface_off, (size_t)v->iface_size, &f) != 0) {
+            return -1;
+        }
+    }
+    if (v->debug_size != 0) {
+        ObjDebug g;
+        if (obj_debug_decode(d + v->debug_off, (size_t)v->debug_size, v->size[OBJ_SEC_TEXT],
+                             (v->flags & OBJ_FLAG_EXECUTABLE) != 0, v->nsyms, &g) != 0) {
             return -1;
         }
     }
@@ -412,6 +559,173 @@ static void put_sec(Buf *b, unsigned sec)
     }
 }
 
+static void put_dbg_name(Buf *b, const ObjDebug *g, const uint8_t *row)
+{
+    buf_bytes(b, obj_debug_name(g, rd32(row)), rd32(row + 4));
+}
+
+static void put_ref(Buf *b, const char *label, uint32_t i)
+{
+    put_text(b, label);
+    if (i == OBJ_DBG_NONE) put_text(b, "بلا");
+    else put_num(b, i);
+}
+
+static const char *const VAR_KINDS[] = {"معامل", "محلي", "عام"};
+static const char *const TY_KINDS[] = {"؟", "صحيح", "منطقي", "حرف", "حقيقي", "مؤشر", "اختياري",
+                                        "مصفوفة", "شريحة", "بنية", "تعداد", "دالة"};
+
+/* the debug region, one row per line (docs/spec-object.md) */
+static void dump_debug(const ObjDebug *g, Buf *out)
+{
+    uint32_t i;
+    for (i = 0; i < g->count[OBJ_DBG_FILES]; i++) {
+        const uint8_t *r = obj_debug_row(g, OBJ_DBG_FILES, i);
+        put_ref(out, "تنقيح ملف ", i);
+        put_text(out, " ");
+        put_dbg_name(out, g, r);
+        put_text(out, " بصمة ");
+        put_hex(out, rd64(r + 8));
+        put_text(out, "\n");
+    }
+    for (i = 0; i < g->count[OBJ_DBG_LINES]; i++) {
+        const uint8_t *r = obj_debug_row(g, OBJ_DBG_LINES, i);
+        put_text(out, "تنقيح سطر موضع ");
+        put_num(out, rd64(r));
+        put_ref(out, " ملف ", rd32(r + 8));
+        put_text(out, " سطر ");
+        put_num(out, rd32(r + 12));
+        put_text(out, " عمود ");
+        put_num(out, rd32(r + 16));
+        put_text(out, "\n");
+    }
+    for (i = 0; i < g->count[OBJ_DBG_FUNCS]; i++) {
+        const uint8_t *r = obj_debug_row(g, OBJ_DBG_FUNCS, i);
+        put_ref(out, "تنقيح دالة ", i);
+        put_text(out, " ");
+        put_dbg_name(out, g, r);
+        put_ref(out, " رمز ", rd32(r + 8));
+        put_text(out, " من ");
+        put_num(out, rd64(r + 16));
+        put_text(out, " إلى ");
+        put_num(out, rd64(r + 24));
+        put_ref(out, " ملف ", rd32(r + 12));
+        put_text(out, " سطر ");
+        put_num(out, rd32(r + 32));
+        put_text(out, " إطار ");
+        put_num(out, rd32(r + 36));
+        put_ref(out, " نتيجة ", rd32(r + 40));
+        put_text(out, "\n");
+    }
+    for (i = 0; i < g->count[OBJ_DBG_SCOPES]; i++) {
+        const uint8_t *r = obj_debug_row(g, OBJ_DBG_SCOPES, i);
+        put_ref(out, "تنقيح نطاق ", i);
+        put_ref(out, " دالة ", rd32(r));
+        put_ref(out, " أب ", rd32(r + 4));
+        put_text(out, " من ");
+        put_num(out, rd64(r + 8));
+        put_text(out, " إلى ");
+        put_num(out, rd64(r + 16));
+        put_text(out, "\n");
+    }
+    for (i = 0; i < g->count[OBJ_DBG_VARS]; i++) {
+        const uint8_t *r = obj_debug_row(g, OBJ_DBG_VARS, i);
+        put_text(out, "تنقيح متغير ");
+        put_dbg_name(out, g, r);
+        put_text(out, " ");
+        put_text(out, VAR_KINDS[r[16]]);
+        put_ref(out, " نوع ", rd32(r + 8));
+        put_ref(out, " نطاق ", rd32(r + 12));
+        if (r[16] == OBJ_VAR_GLOBAL) {
+            put_text(out, " رمز ");
+            put_num(out, rd64(r + 24));
+        } else {
+            put_text(out, " إطار ");
+            put_signed(out, (int64_t)rd64(r + 24));
+        }
+        put_text(out, "\n");
+    }
+    for (i = 0; i < g->count[OBJ_DBG_TYPES]; i++) {
+        const uint8_t *r = obj_debug_row(g, OBJ_DBG_TYPES, i);
+        uint8_t k = r[0], f = r[1];
+        uint32_t a = rd32(r + 12), c = rd32(r + 24), n = rd32(r + 28);
+        uint64_t b = rd64(r + 16);
+        put_ref(out, "تنقيح نوع ", i);
+        put_text(out, " ");
+        put_text(out, TY_KINDS[k]);
+        if (rd32(r + 8) != 0) {
+            put_text(out, " ");
+            put_dbg_name(out, g, r + 4);
+        }
+        switch (k) {
+        case OBJ_TY_INT:
+        case OBJ_TY_REAL:
+            put_text(out, " بتات ");
+            put_num(out, a);
+            break;
+        case OBJ_TY_PTR: case OBJ_TY_OPT: case OBJ_TY_SLICE:
+            put_ref(out, " إلى ", a);
+            break;
+        case OBJ_TY_ARRAY:
+            put_ref(out, " عنصر ", a);
+            put_text(out, " عدد ");
+            put_num(out, b);
+            break;
+        case OBJ_TY_STRUCT:
+            put_text(out, " حجم ");
+            put_num(out, b);
+            put_text(out, " محاذاة ");
+            put_num(out, a);
+            break;
+        case OBJ_TY_ENUM:
+            put_ref(out, " أساس ", a);
+            break;
+        case OBJ_TY_FUNC:
+            put_ref(out, " نتيجة ", a);
+            break;
+        default:
+            break;
+        }
+        if (k == OBJ_TY_STRUCT || k == OBJ_TY_ENUM || k == OBJ_TY_FUNC) {
+            put_text(out, " أول ");
+            put_num(out, c);
+            put_text(out, " عدد ");
+            put_num(out, n);
+        }
+        if (f & OBJ_TYF_SIGNED) put_text(out, " بإشارة");
+        if (f & OBJ_TYF_SIZE) put_text(out, " حجم");
+        if (f & OBJ_TYF_READONLY) put_text(out, " ثابت");
+        if (f & OBJ_TYF_VOLATILE) put_text(out, " متطاير");
+        if (f & OBJ_TYF_PACKED) put_text(out, " مضغوطة");
+        put_text(out, "\n");
+    }
+    for (i = 0; i < g->count[OBJ_DBG_FIELDS]; i++) {
+        const uint8_t *r = obj_debug_row(g, OBJ_DBG_FIELDS, i);
+        put_ref(out, "تنقيح حقل ", i);
+        put_text(out, " ");
+        put_dbg_name(out, g, r);
+        put_ref(out, " نوع ", rd32(r + 8));
+        put_text(out, " إزاحة ");
+        put_num(out, rd64(r + 16));
+        put_text(out, "\n");
+    }
+    for (i = 0; i < g->count[OBJ_DBG_MEMBERS]; i++) {
+        const uint8_t *r = obj_debug_row(g, OBJ_DBG_MEMBERS, i);
+        put_ref(out, "تنقيح عضو ", i);
+        put_text(out, " ");
+        put_dbg_name(out, g, r);
+        put_text(out, " قيمة ");
+        put_signed(out, (int64_t)rd64(r + 8));
+        put_text(out, "\n");
+    }
+    for (i = 0; i < g->count[OBJ_DBG_PARAMS]; i++) {
+        const uint8_t *r = obj_debug_row(g, OBJ_DBG_PARAMS, i);
+        put_ref(out, "تنقيح معامل ", i);
+        put_ref(out, " نوع ", rd32(r));
+        put_text(out, "\n");
+    }
+}
+
 void obj_dump(const ObjView *v, Buf *out)
 {
     uint32_t i;
@@ -468,6 +782,10 @@ void obj_dump(const ObjView *v, Buf *out)
             buf_bytes(out, f.text, f.text_len);
             put_text(out, "{\n");
         }
+    }
+    {
+        ObjDebug g;
+        if (obj_debug(v, &g) == 0) dump_debug(&g, out);
     }
     for (i = 0; i < v->nrelocs; i++) {
         ObjReloc r;

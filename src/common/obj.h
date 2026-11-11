@@ -9,8 +9,8 @@
 
 #include "buf.h"
 
-#define OBJ_VERSION     1u
-#define OBJ_HEADER_SIZE 80u
+#define OBJ_VERSION     2u   /* 2: the debug region (decision 64) */
+#define OBJ_HEADER_SIZE 88u
 #define OBJ_SYM_SIZE    24u
 #define OBJ_RELOC_SIZE  24u
 #define OBJ_NSEC        4
@@ -56,7 +56,40 @@ typedef struct {
     uint32_t flags;         /* OBJ_FLAG_* */
     const uint8_t *iface;   /* encoded interface region (obj_iface_encode), or NULL */
     size_t iface_len;
+    const uint8_t *debug;   /* encoded debug region (obj_debug_*), or NULL */
+    size_t debug_len;
 } ObjOut;
+
+/* The debug region (تنقيح, decision 64, docs/spec-object.md): a header of
+ * row counts, then fixed-size rows per table, then the names. */
+enum { OBJ_DBG_FILES, OBJ_DBG_LINES, OBJ_DBG_FUNCS, OBJ_DBG_SCOPES, OBJ_DBG_VARS,
+       OBJ_DBG_TYPES, OBJ_DBG_FIELDS, OBJ_DBG_MEMBERS, OBJ_DBG_PARAMS, OBJ_DBG_NTABLES };
+#define OBJ_DBG_HEADER 48u
+#define OBJ_DBG_NONE   0xFFFFFFFFu
+enum { OBJ_TY_INT = 1, OBJ_TY_BOOL, OBJ_TY_CHAR, OBJ_TY_REAL, OBJ_TY_PTR, OBJ_TY_OPT,
+       OBJ_TY_ARRAY, OBJ_TY_SLICE, OBJ_TY_STRUCT, OBJ_TY_ENUM, OBJ_TY_FUNC, OBJ_TY_LAST = OBJ_TY_FUNC };
+enum { OBJ_TYF_SIGNED = 1, OBJ_TYF_SIZE = 2, OBJ_TYF_READONLY = 4, OBJ_TYF_VOLATILE = 8,
+       OBJ_TYF_PACKED = 16, OBJ_TYF_ALL = 31 };
+enum { OBJ_VAR_PARAM, OBJ_VAR_LOCAL, OBJ_VAR_GLOBAL };
+extern const uint32_t obj_dbg_row[OBJ_DBG_NTABLES];   /* row size of each table */
+
+typedef struct {
+    const uint8_t *data;
+    size_t len;
+    uint32_t count[OBJ_DBG_NTABLES];
+    uint64_t table_off[OBJ_DBG_NTABLES];  /* from data */
+    uint64_t names_off;
+    uint32_t names_size;
+} ObjDebug;
+
+/* Checks a region (every index and name in range, symbol indexes below
+ * nsyms or OBJ_DBG_NONE, lines in order, code positions inside `text_size`
+ * unless `addresses`); 0 if well formed. */
+int obj_debug_decode(const uint8_t *data, size_t len, uint64_t text_size, int addresses,
+                     uint32_t nsyms, ObjDebug *out);
+/* Row i of table t, and a name stored at (off, len). */
+const uint8_t *obj_debug_row(const ObjDebug *d, int t, uint32_t i);
+const uint8_t *obj_debug_name(const ObjDebug *d, uint32_t off);
 
 /* Module interface (docs/spec-object.md, decisions 35-36). */
 typedef struct {
@@ -94,6 +127,7 @@ typedef struct {
     uint64_t content_off[OBJ_NSEC];
     uint32_t nsyms, nrelocs;
     uint64_t syms_off, relocs_off, names_off, names_size, iface_off, iface_size;
+    uint64_t debug_off, debug_size;
 } ObjView;
 
 int obj_is_object(const uint8_t *data, size_t len);   /* magic check */
@@ -101,6 +135,8 @@ int obj_is_object(const uint8_t *data, size_t len);   /* magic check */
 int obj_parse(const uint8_t *data, size_t len, ObjView *v);
 /* The interface of a parsed object; returns -1 if it has none. */
 int obj_iface(const ObjView *v, ObjIface *out);
+/* The debug region of a parsed object; returns -1 if it has none. */
+int obj_debug(const ObjView *v, ObjDebug *out);
 void obj_sym(const ObjView *v, uint32_t i, ObjSym *out);
 void obj_reloc(const ObjView *v, uint32_t i, ObjReloc *out);
 
