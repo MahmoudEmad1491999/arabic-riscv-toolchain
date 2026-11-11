@@ -90,6 +90,7 @@ void ld_init(Linker *ld, Arena *a)
     ld->base = LD_BASE;
     buf_init(&ld->libs);
     buf_init(&ld->lib_files);
+    buf_init(&ld->debug);
     buf_init(&ld->imports);
     buf_init(&ld->out_relocs);
     buf_init(&ld->globals);
@@ -115,6 +116,7 @@ void ld_free(Linker *ld)
             rt_free(f[i].data);
         }
         buf_free(&ld->lib_files);
+        buf_free(&ld->debug);
         buf_free(&ld->libs);
         buf_free(&ld->imports);
         buf_free(&ld->out_relocs);
@@ -261,6 +263,10 @@ static int read_native(Linker *ld, InObj *o)
     }
     if (v.iface_size != 0) {
         o->has_iface = obj_iface_decode(img + v.iface_off, (size_t)v.iface_size, &o->iface) == 0;
+    }
+    if (v.debug_size != 0) {
+        o->has_debug = obj_debug_decode(img + v.debug_off, (size_t)v.debug_size, v.size[OBJ_SEC_TEXT], 0,
+                                        v.nsyms, &o->debug) == 0;
     }
     rt_free(o->file.data);
     o->file.data = img;
@@ -1003,6 +1009,111 @@ static int check_interfaces(Linker *ld)
     return rc;
 }
 
+/* ------------------------------------------------------------------ */
+/* Debug information (decision 64): every object's tables one after the
+ * other, indexes renumbered, code offsets and global variables turned into
+ * addresses, symbol indexes dropped (A88). */
+
+static uint32_t plus(uint32_t i, uint32_t base)
+{
+    return i == OBJ_DBG_NONE ? i : i + base;
+}
+
+static void merge_debug(Linker *ld)
+{
+    uint32_t base[OBJ_DBG_NTABLES] = {0}, nbase = 0;
+    Buf rows[OBJ_DBG_NTABLES], names;
+    size_t i;
+    int t, any = 0;
+
+    for (t = 0; t < OBJ_DBG_NTABLES; t++) buf_init(&rows[t]);
+    buf_init(&names);
+    for (i = 0; i < ld->nobjs; i++) {
+        InObj *o = &ld->objs[i];
+        const ObjDebug *g = &o->debug;
+        uint64_t text;
+        uint32_t r;
+        if (!o->has_debug) continue;
+        any = 1;
+        text = ld->out_addr[OUT_TEXT] + o->secs[1 + OBJ_SEC_TEXT].out_off;
+        for (t = 0; t < OBJ_DBG_NTABLES; t++) {
+            for (r = 0; r < g->count[t]; r++) {
+                size_t at = rows[t].len;
+                uint8_t *p;
+                buf_bytes(&rows[t], obj_debug_row(g, t, r), obj_dbg_row[t]);
+                p = rows[t].data + at;
+                switch (t) {
+                case OBJ_DBG_FILES:
+                    wr32(p, rd32(p) + nbase);
+                    break;
+                case OBJ_DBG_LINES:
+                    wr64(p, rd64(p) + text);
+                    wr32(p + 8, rd32(p + 8) + base[OBJ_DBG_FILES]);
+                    break;
+                case OBJ_DBG_FUNCS:
+                    wr32(p, rd32(p) + nbase);
+                    wr32(p + 8, OBJ_DBG_NONE);
+                    wr32(p + 12, rd32(p + 12) + base[OBJ_DBG_FILES]);
+                    wr64(p + 16, rd64(p + 16) + text);
+                    wr64(p + 24, rd64(p + 24) + text);
+                    wr32(p + 40, plus(rd32(p + 40), base[OBJ_DBG_TYPES]));
+                    break;
+                case OBJ_DBG_SCOPES:
+                    wr32(p, rd32(p) + base[OBJ_DBG_FUNCS]);
+                    wr32(p + 4, plus(rd32(p + 4), base[OBJ_DBG_SCOPES]));
+                    wr64(p + 8, rd64(p + 8) + text);
+                    wr64(p + 16, rd64(p + 16) + text);
+                    break;
+                case OBJ_DBG_VARS:
+                    wr32(p, rd32(p) + nbase);
+                    wr32(p + 8, rd32(p + 8) + base[OBJ_DBG_TYPES]);
+                    wr32(p + 12, plus(rd32(p + 12), base[OBJ_DBG_SCOPES]));
+                    if (p[16] == OBJ_VAR_GLOBAL && rd64(p + 24) != OBJ_DBG_NONE) {
+                        int ok;
+                        uint64_t a = sym_addr(ld, o, (size_t)rd64(p + 24) + 1, &ok);
+                        wr64(p + 24, ok ? a : OBJ_DBG_NONE);
+                    }
+                    break;
+                case OBJ_DBG_TYPES: {
+                    uint8_t k = p[0];
+                    if (rd32(p + 8) != 0) wr32(p + 4, rd32(p + 4) + nbase);
+                    if (k == OBJ_TY_PTR || k == OBJ_TY_OPT || k == OBJ_TY_ARRAY || k == OBJ_TY_SLICE ||
+                        k == OBJ_TY_ENUM || k == OBJ_TY_FUNC) {
+                        wr32(p + 12, plus(rd32(p + 12), base[OBJ_DBG_TYPES]));
+                    }
+                    if (k == OBJ_TY_STRUCT) wr32(p + 24, rd32(p + 24) + base[OBJ_DBG_FIELDS]);
+                    if (k == OBJ_TY_ENUM) wr32(p + 24, rd32(p + 24) + base[OBJ_DBG_MEMBERS]);
+                    if (k == OBJ_TY_FUNC) wr32(p + 24, rd32(p + 24) + base[OBJ_DBG_PARAMS]);
+                    break;
+                }
+                case OBJ_DBG_FIELDS:
+                    wr32(p, rd32(p) + nbase);
+                    wr32(p + 8, rd32(p + 8) + base[OBJ_DBG_TYPES]);
+                    break;
+                case OBJ_DBG_MEMBERS:
+                    wr32(p, rd32(p) + nbase);
+                    break;
+                default: /* parameters */
+                    wr32(p, rd32(p) + base[OBJ_DBG_TYPES]);
+                    break;
+                }
+            }
+        }
+        for (t = 0; t < OBJ_DBG_NTABLES; t++) base[t] += g->count[t];
+        buf_bytes(&names, g->data + g->names_off, g->names_size);
+        nbase += g->names_size;
+    }
+    if (any) {
+        for (t = 0; t < OBJ_DBG_NTABLES; t++) buf_u32(&ld->debug, base[t]);
+        buf_u32(&ld->debug, nbase);
+        buf_u64(&ld->debug, 0);
+        for (t = 0; t < OBJ_DBG_NTABLES; t++) buf_bytes(&ld->debug, rows[t].data, rows[t].len);
+        buf_bytes(&ld->debug, names.data, names.len);
+    }
+    for (t = 0; t < OBJ_DBG_NTABLES; t++) buf_free(&rows[t]);
+    buf_free(&names);
+}
+
 int ld_link(Linker *ld)
 {
     size_t i, j;
@@ -1033,6 +1144,7 @@ int ld_link(Linker *ld)
         diag_plain(D_LINK_BARE_ENTRY, NULL); /* the machine starts at the base address */
         return -1;
     }
+    if (rc == 0) merge_debug(ld);
     return rc;
 }
 
@@ -1123,8 +1235,8 @@ int ld_write(Linker *ld, const char *path)
 {
     Buf out, symtab, strtab, shstr;
     uint32_t first_global = 1;
-    uint32_t names[OUT_COUNT], n_symtab, n_strtab, n_shstr;
-    uint64_t symtab_off, strtab_off, shstr_off, shoff;
+    uint32_t names[OUT_COUNT], n_symtab, n_strtab, n_shstr, n_debug;
+    uint64_t symtab_off, strtab_off, shstr_off, shoff, debug_off = 0;
     int k;
     int rc;
 
@@ -1140,6 +1252,7 @@ int ld_write(Linker *ld, const char *path)
     n_symtab = add_str(&shstr, ".symtab");
     n_strtab = add_str(&shstr, ".strtab");
     n_shstr = add_str(&shstr, ".shstrtab");
+    n_debug = ld->debug.len != 0 ? add_str(&shstr, ".تنقيح") : 0;
 
     /* ELF header */
     {
@@ -1156,7 +1269,7 @@ int ld_write(Linker *ld, const char *path)
         buf_u16(&out, 56);
         buf_u16(&out, (uint16_t)ld->nphdr);
         buf_u16(&out, ELF_SHDR_SIZE);
-        buf_u16(&out, 8);
+        buf_u16(&out, ld->debug.len != 0 ? 9 : 8);
         buf_u16(&out, 7);
     }
     put_phdr(&out, 5 /* R+X */, ld->seg_off, ld->base,
@@ -1183,6 +1296,11 @@ int ld_write(Linker *ld, const char *path)
     buf_bytes(&out, strtab.data, strtab.len);
     shstr_off = out.len;
     buf_bytes(&out, shstr.data, shstr.len);
+    if (ld->debug.len != 0) {
+        buf_align(&out, 8);
+        debug_off = out.len;
+        buf_bytes(&out, ld->debug.data, ld->debug.len);
+    }
     buf_align(&out, 8);
     shoff = out.len;
 
@@ -1202,6 +1320,9 @@ int ld_write(Linker *ld, const char *path)
                  ELF_SYM_SIZE);
         put_shdr(&sh, n_strtab, SHT_STRTAB, 0, 0, strtab_off, strtab.len, 0, 0, 1, 0);
         put_shdr(&sh, n_shstr, SHT_STRTAB, 0, 0, shstr_off, shstr.len, 0, 0, 1, 0);
+        if (ld->debug.len != 0) {
+            put_shdr(&sh, n_debug, SHT_PROGBITS, 0, 0, debug_off, ld->debug.len, 0, 0, 8, 0);
+        }
         buf_bytes(&out, sh.data, sh.len);
         buf_free(&sh);
     }
@@ -1305,6 +1426,8 @@ int ld_write_program(Linker *ld, const char *path)
     o.nsyms = syms.len / sizeof(ObjSym);
     o.relocs = (const ObjReloc *)relocs.data;
     o.nrelocs = relocs.len / sizeof(ObjReloc);
+    o.debug = ld->debug.data;
+    o.debug_len = ld->debug.len;
     obj_serialize(&o, &out);
     rc = rt_write_file(path, out.data, out.len);
     buf_free(&syms);

@@ -107,7 +107,7 @@ The text is غرة source, in file order like every source file: the module's `�
 
 ## Debug information (the Debug region, decision 64)
 
-Tables of fixed-size rows that refer to each other by index; no attribute forms, no bytecode, no state machine. Every name is (offset, length) into the region's own names. `بلا` (0xFFFFFFFF) is the "none" index. A code position is an offset into this object's `نص`; in an executable (and in the `.تنقيح` section of a hosted ELF executable) it is an address. Symbol indexes refer to this object's symbol table (or are `بلا`).
+Tables of fixed-size rows that refer to each other by index; no attribute forms, no bytecode, no state machine. Every name is (offset, length) into the region's own names. `بلا` (0xFFFFFFFF) is the "none" index. A code position is an offset into this object's `نص`; in an executable (and in the `.تنقيح` section of an ELF executable) it is an address. Symbol indexes refer to this object's symbol table (or are `بلا`); in an executable everything is resolved: function symbols are `بلا` and a global variable's `where` is its address (A88).
 
 Region header (48 bytes): the row count of each of the 9 tables below (9 × u32), names_size u32, 8 reserved bytes (0). Then the tables in this order, then the names.
 

@@ -63,6 +63,8 @@ typedef struct {
     size_t nsyms;
     int has_iface;     /* our format with a module interface */
     ObjIface iface;    /* points into file */
+    int has_debug;     /* our format with a debug region (decision 64) */
+    ObjDebug debug;    /* points into file */
 } InObj;
 
 struct GlobalSym {
@@ -99,6 +101,7 @@ typedef struct {
     Buf out_relocs;           /* OutReloc: relocations left for the loader */
     Buf libs;                 /* LibMember: members of .مكتبة files not linked yet */
     Buf lib_files;            /* RtBuf of each library file */
+    Buf debug;                /* the merged debug region, addresses resolved (empty: none) */
 } Linker;
 
 typedef struct {

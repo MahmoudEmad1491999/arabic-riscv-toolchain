@@ -152,5 +152,14 @@ for src in "$ROOT"/tests/debug/*.تجميع; do
     report "obj/debug/$name" $ok
 done
 
+# the linker merges them: tests/debug/ربط.out is the program's view; the
+# hosted executable carries the same tables in its .تنقيح section
+ok=1
+"$LD" --برنامج "$OUT/debug_prog" "$OUT/debug_ثان.كائن" "$OUT/debug_جداول.كائن" &&
+    "$VIEW" "$OUT/debug_prog" > "$OUT/debug_prog.txt" && cmp -s "$OUT/debug_prog.txt" "$ROOT/tests/debug/ربط.out" || ok=0
+"$LD" "$OUT/debug_elf" "$OUT/debug_ثان.كائن" "$OUT/debug_جداول.كائن" &&
+    "${PREFIX}readelf" -S -W "$OUT/debug_elf" | grep -q "PROGBITS        0000000000000000" || ok=0
+report "obj/debug/link" $ok
+
 echo "object format tests: $pass passed, $fail failed"
 [ $fail = 0 ]

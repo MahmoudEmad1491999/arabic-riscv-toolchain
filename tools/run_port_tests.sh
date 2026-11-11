@@ -282,6 +282,10 @@ for order in "" file; do
         ld_same "$ROOT/مصدر/بناء/$tool.كائن" $(cd "$ROOT/مصدر/بناء" && find التجميع الربط مشترك غرة -name '*.كائن' 2>/dev/null |
             LC_ALL=C sort | sed "s|^|$ROOT/مصدر/بناء/|") "$ROOT/مصدر/بناء/تشغيل.تجميع.كائن" || ok=0
     done
+    # debug regions merged (decision 64): hosted, bare and program
+    for mode in "" --برنامج; do
+        ld_same $mode "$OUT/objs/debug_ثان.كائن" "$OUT/objs/debug_جداول.كائن" || ok=0
+    done
     ld_same || ok=0
     ld_same --برنامج || ok=0
     ld_same "$OUT/لا_يوجد.كائن" || ok=0

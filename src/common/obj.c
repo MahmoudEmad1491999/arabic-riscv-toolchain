@@ -161,7 +161,7 @@ int obj_debug_decode(const uint8_t *data, size_t len, uint64_t text_size, int ad
     for (i = 0; i < g->count[OBJ_DBG_FUNCS]; i++) {
         const uint8_t *r = obj_debug_row(g, OBJ_DBG_FUNCS, i);
         if (!dbg_name(g, r) || !dbg_ref(g, OBJ_DBG_FILES, rd32(r + 12), 0) ||
-            (rd32(r + 8) != OBJ_DBG_NONE && rd32(r + 8) >= nsyms) ||
+            (rd32(r + 8) != OBJ_DBG_NONE && (addresses || rd32(r + 8) >= nsyms)) ||
             !dbg_code(rd64(r + 16), rd64(r + 24), text_size, addresses) ||
             !dbg_ref(g, OBJ_DBG_TYPES, rd32(r + 40), 1) || rd32(r + 44) != 0) return dbg_bad(g, OBJ_DBG_FUNCS, i);
     }
@@ -176,7 +176,7 @@ int obj_debug_decode(const uint8_t *data, size_t len, uint64_t text_size, int ad
         uint8_t kind = r[16];
         if (!dbg_name(g, r) || !dbg_ref(g, OBJ_DBG_TYPES, rd32(r + 8), 0) ||
             kind > OBJ_VAR_GLOBAL || r[17] || r[18] || r[19] || rd32(r + 20) != 0) return dbg_bad(g, OBJ_DBG_VARS, i);
-        if (kind == OBJ_VAR_GLOBAL && rd64(r + 24) != OBJ_DBG_NONE && rd64(r + 24) >= nsyms) return dbg_bad(g, OBJ_DBG_VARS, i);
+        if (kind == OBJ_VAR_GLOBAL && !addresses && rd64(r + 24) != OBJ_DBG_NONE && rd64(r + 24) >= nsyms) return dbg_bad(g, OBJ_DBG_VARS, i);
         if (kind == OBJ_VAR_GLOBAL ? rd32(r + 12) != OBJ_DBG_NONE
                                    : !dbg_ref(g, OBJ_DBG_SCOPES, rd32(r + 12), 1)) return dbg_bad(g, OBJ_DBG_VARS, i);
     }

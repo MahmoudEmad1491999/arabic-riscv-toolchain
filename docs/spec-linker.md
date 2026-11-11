@@ -44,6 +44,10 @@ Inside each output section the input sections are placed in command-line order, 
 
 Any other type (ALIGN, GOT, TLS, ...) is an error. Instruction fields are cleared and rewritten, whatever the assembler left in them.
 
+## Debug information (decision 64, A88)
+
+The debug regions of the input objects (our format) are joined in input order into one region: every index gets the row count of the earlier objects added, code offsets become addresses (the object's text address added), a global variable's symbol becomes its address, and function symbols become `بلا`. A program (`--برنامج`) keeps the region in its own Debug region; a hosted or bare ELF executable carries the same bytes in a non-loaded section named `.تنقيح` (after `.shstrtab`). Inputs without debug information contribute nothing; with none at all, the output is unchanged.
+
 ## Not yet (A36)
 
 Static archives (`.a`), linker scripts, shared libraries and PIE, relaxation, `--gc-sections`.

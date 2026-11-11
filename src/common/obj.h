@@ -85,8 +85,10 @@ typedef struct {
 } ObjDebug;
 
 /* Checks a region (every index and name in range, symbol indexes below
- * nsyms or OBJ_DBG_NONE, lines in order, code positions inside `text_size`
- * unless `addresses`); 0 if well formed. */
+ * nsyms or OBJ_DBG_NONE, lines in order, code positions inside `text_size`);
+ * 0 if well formed. With `addresses` (an executable) code positions are
+ * addresses, function symbols are OBJ_DBG_NONE and a global variable's
+ * `where` is its address. */
 int obj_debug_decode(const uint8_t *data, size_t len, uint64_t text_size, int addresses,
                      uint32_t nsyms, ObjDebug *out);
 /* Row i of table t, and a name stored at (off, len). */
