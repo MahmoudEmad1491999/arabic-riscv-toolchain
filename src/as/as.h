@@ -8,6 +8,7 @@
 #include "../common/buf.h"
 #include "../common/rt.h"
 #include "lexer.h"
+#include "../common/obj.h"
 
 enum {
     SEC_TEXT,
@@ -65,6 +66,12 @@ typedef struct {
     Buf symbols;              /* array of Symbol*, creation order */
     Buf locals;               /* array of LocalCount */
     const char *src_dir;      /* directory of the source file, for .تضمين */
+    /* debug rows (pass 2): bytes per table, the directive of each row (for
+     * errors), and the symbol of each function / global variable row */
+    Buf dbg[OBJ_DBG_NTABLES];
+    Buf dbg_at[OBJ_DBG_NTABLES];   /* Token* per row */
+    Buf dbg_sym[OBJ_DBG_NTABLES];  /* Symbol* per row (functions, variables) */
+    Buf dbg_names;
 } Assembler;
 
 void as_init(Assembler *as, Arena *a, const TokenList *tl);

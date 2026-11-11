@@ -97,7 +97,10 @@ typedef enum {
     DIR_STRING,      /* .سلسلة */
     DIR_ZERO,        /* .فراغ */
     DIR_EQU,         /* .ثابت */
-    DIR_INCBIN       /* .تضمين "ملف": the file's bytes (A70) */
+    DIR_INCBIN,      /* .تضمين "ملف": the file's bytes (A70) */
+    /* debug rows (decision 64, A87): one directive per row of a تنقيح table */
+    DIR_DBG_FILE, DIR_DBG_LINE, DIR_DBG_FUNC, DIR_DBG_SCOPE, DIR_DBG_VAR,
+    DIR_DBG_TYPE, DIR_DBG_FIELD, DIR_DBG_MEMBER, DIR_DBG_PARAM
 } DirKind;
 
 DirKind find_directive(const uint8_t *name, size_t len);

@@ -120,6 +120,13 @@ static int dbg_code(uint64_t start, uint64_t end, uint64_t text_size, int addres
     return start <= end && (addresses || end <= text_size);
 }
 
+static int dbg_bad(ObjDebug *g, int t, uint32_t i)
+{
+    g->bad_table = t;
+    g->bad_row = i;
+    return -1;
+}
+
 int obj_debug_decode(const uint8_t *data, size_t len, uint64_t text_size, int addresses,
                      uint32_t nsyms, ObjDebug *g)
 {
@@ -128,6 +135,7 @@ int obj_debug_decode(const uint8_t *data, size_t len, uint64_t text_size, int ad
     int t;
 
     memset(g, 0, sizeof *g);
+    g->bad_table = -1;
     if (len < OBJ_DBG_HEADER || rd64(data + 40) != 0) return -1;
     g->data = data;
     g->len = len;
@@ -142,35 +150,35 @@ int obj_debug_decode(const uint8_t *data, size_t len, uint64_t text_size, int ad
     if (pos + g->names_size != len) return -1;
 
     for (i = 0; i < g->count[OBJ_DBG_FILES]; i++) {
-        if (!dbg_name(g, obj_debug_row(g, OBJ_DBG_FILES, i))) return -1;
+        if (!dbg_name(g, obj_debug_row(g, OBJ_DBG_FILES, i))) return dbg_bad(g, OBJ_DBG_FILES, i);
     }
     for (i = 0; i < g->count[OBJ_DBG_LINES]; i++) {
         const uint8_t *r = obj_debug_row(g, OBJ_DBG_LINES, i);
         if (!dbg_ref(g, OBJ_DBG_FILES, rd32(r + 8), 0) || rd32(r + 20) != 0 ||
-            !dbg_code(rd64(r), rd64(r), text_size, addresses)) return -1;
-        if (i > 0 && rd64(r) < rd64(r - obj_dbg_row[OBJ_DBG_LINES])) return -1; /* in code order */
+            !dbg_code(rd64(r), rd64(r), text_size, addresses)) return dbg_bad(g, OBJ_DBG_LINES, i);
+        if (i > 0 && rd64(r) < rd64(r - obj_dbg_row[OBJ_DBG_LINES])) return dbg_bad(g, OBJ_DBG_LINES, i); /* in code order */
     }
     for (i = 0; i < g->count[OBJ_DBG_FUNCS]; i++) {
         const uint8_t *r = obj_debug_row(g, OBJ_DBG_FUNCS, i);
         if (!dbg_name(g, r) || !dbg_ref(g, OBJ_DBG_FILES, rd32(r + 12), 0) ||
             (rd32(r + 8) != OBJ_DBG_NONE && rd32(r + 8) >= nsyms) ||
             !dbg_code(rd64(r + 16), rd64(r + 24), text_size, addresses) ||
-            !dbg_ref(g, OBJ_DBG_TYPES, rd32(r + 40), 1) || rd32(r + 44) != 0) return -1;
+            !dbg_ref(g, OBJ_DBG_TYPES, rd32(r + 40), 1) || rd32(r + 44) != 0) return dbg_bad(g, OBJ_DBG_FUNCS, i);
     }
     for (i = 0; i < g->count[OBJ_DBG_SCOPES]; i++) {
         const uint8_t *r = obj_debug_row(g, OBJ_DBG_SCOPES, i);
         if (!dbg_ref(g, OBJ_DBG_FUNCS, rd32(r), 0) || !dbg_ref(g, OBJ_DBG_SCOPES, rd32(r + 4), 1) ||
             (rd32(r + 4) != OBJ_DBG_NONE && rd32(r + 4) >= i) ||   /* parents come first */
-            !dbg_code(rd64(r + 8), rd64(r + 16), text_size, addresses)) return -1;
+            !dbg_code(rd64(r + 8), rd64(r + 16), text_size, addresses)) return dbg_bad(g, OBJ_DBG_SCOPES, i);
     }
     for (i = 0; i < g->count[OBJ_DBG_VARS]; i++) {
         const uint8_t *r = obj_debug_row(g, OBJ_DBG_VARS, i);
         uint8_t kind = r[16];
         if (!dbg_name(g, r) || !dbg_ref(g, OBJ_DBG_TYPES, rd32(r + 8), 0) ||
-            kind > OBJ_VAR_GLOBAL || r[17] || r[18] || r[19] || rd32(r + 20) != 0) return -1;
-        if (kind == OBJ_VAR_GLOBAL && rd64(r + 24) != OBJ_DBG_NONE && rd64(r + 24) >= nsyms) return -1;
+            kind > OBJ_VAR_GLOBAL || r[17] || r[18] || r[19] || rd32(r + 20) != 0) return dbg_bad(g, OBJ_DBG_VARS, i);
+        if (kind == OBJ_VAR_GLOBAL && rd64(r + 24) != OBJ_DBG_NONE && rd64(r + 24) >= nsyms) return dbg_bad(g, OBJ_DBG_VARS, i);
         if (kind == OBJ_VAR_GLOBAL ? rd32(r + 12) != OBJ_DBG_NONE
-                                   : !dbg_ref(g, OBJ_DBG_SCOPES, rd32(r + 12), 1)) return -1;
+                                   : !dbg_ref(g, OBJ_DBG_SCOPES, rd32(r + 12), 1)) return dbg_bad(g, OBJ_DBG_VARS, i);
     }
     for (i = 0; i < g->count[OBJ_DBG_TYPES]; i++) {
         const uint8_t *r = obj_debug_row(g, OBJ_DBG_TYPES, i);
@@ -191,18 +199,18 @@ int obj_debug_decode(const uint8_t *data, size_t len, uint64_t text_size, int ad
         if (kind == OBJ_TY_STRUCT) ok = ok && (uint64_t)c + n <= g->count[OBJ_DBG_FIELDS];
         if (kind == OBJ_TY_ENUM) ok = ok && (uint64_t)c + n <= g->count[OBJ_DBG_MEMBERS];
         if (kind == OBJ_TY_FUNC) ok = ok && (uint64_t)c + n <= g->count[OBJ_DBG_PARAMS];
-        if (!ok) return -1;
+        if (!ok) return dbg_bad(g, OBJ_DBG_TYPES, i);
     }
     for (i = 0; i < g->count[OBJ_DBG_FIELDS]; i++) {
         const uint8_t *r = obj_debug_row(g, OBJ_DBG_FIELDS, i);
-        if (!dbg_name(g, r) || !dbg_ref(g, OBJ_DBG_TYPES, rd32(r + 8), 0) || rd32(r + 12) != 0) return -1;
+        if (!dbg_name(g, r) || !dbg_ref(g, OBJ_DBG_TYPES, rd32(r + 8), 0) || rd32(r + 12) != 0) return dbg_bad(g, OBJ_DBG_FIELDS, i);
     }
     for (i = 0; i < g->count[OBJ_DBG_MEMBERS]; i++) {
-        if (!dbg_name(g, obj_debug_row(g, OBJ_DBG_MEMBERS, i))) return -1;
+        if (!dbg_name(g, obj_debug_row(g, OBJ_DBG_MEMBERS, i))) return dbg_bad(g, OBJ_DBG_MEMBERS, i);
     }
     for (i = 0; i < g->count[OBJ_DBG_PARAMS]; i++) {
         const uint8_t *r = obj_debug_row(g, OBJ_DBG_PARAMS, i);
-        if (!dbg_ref(g, OBJ_DBG_TYPES, rd32(r), 0) || rd32(r + 4) != 0) return -1;
+        if (!dbg_ref(g, OBJ_DBG_TYPES, rd32(r), 0) || rd32(r + 4) != 0) return dbg_bad(g, OBJ_DBG_PARAMS, i);
     }
     return 0;
 }

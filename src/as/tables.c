@@ -407,6 +407,9 @@ static const DirDef dirs[] = {
     {".فراغ", DIR_ZERO},
     {".ثابت", DIR_EQU},
     {".تضمين", DIR_INCBIN},
+    {".ملف", DIR_DBG_FILE}, {".موضع", DIR_DBG_LINE}, {".دالة", DIR_DBG_FUNC},
+    {".نطاق", DIR_DBG_SCOPE}, {".متغير", DIR_DBG_VAR}, {".نوع", DIR_DBG_TYPE},
+    {".حقل", DIR_DBG_FIELD}, {".عضو", DIR_DBG_MEMBER}, {".معامل", DIR_DBG_PARAM},
 };
 
 DirKind find_directive(const uint8_t *name, size_t len)

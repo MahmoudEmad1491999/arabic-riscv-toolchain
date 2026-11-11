@@ -143,5 +143,14 @@ for vi, path in enumerate(victims):
 PY
 report "obj/mutation" $ok
 
+# debug rows (decision 64): tests/debug/NAME.تجميع gives the عارض output NAME.out
+for src in "$ROOT"/tests/debug/*.تجميع; do
+    name=$(basename "$src" .تجميع)
+    ok=1
+    "$AS" "$src" "$OUT/debug_$name.كائن" && "$VIEW" "$OUT/debug_$name.كائن" > "$OUT/debug_$name.txt" &&
+        cmp -s "$OUT/debug_$name.txt" "$ROOT/tests/debug/$name.out" || ok=0
+    report "obj/debug/$name" $ok
+done
+
 echo "object format tests: $pass passed, $fail failed"
 [ $fail = 0 ]

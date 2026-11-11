@@ -80,6 +80,8 @@ typedef struct {
     uint64_t table_off[OBJ_DBG_NTABLES];  /* from data */
     uint64_t names_off;
     uint32_t names_size;
+    int bad_table;        /* when decoding fails: the table and row at fault, */
+    uint32_t bad_row;     /* or -1 for the header */
 } ObjDebug;
 
 /* Checks a region (every index and name in range, symbol indexes below

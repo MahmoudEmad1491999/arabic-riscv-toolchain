@@ -253,6 +253,25 @@ Registers:
 | `تحويل_عشري_من_مزدوج` / `تحويل_مزدوج_من_عشري` | fcvt.s.d / fcvt.d.s | `عشري، عشري [، تقريب]` |
 | `نسخ_` `سالب_` `مطلق_` (pseudo) | fmv fneg fabs | `هدف، أ` |
 
+## Debug rows (decision 64, A87)
+
+One directive per row of a `تنقيح` table (docs/spec-object.md). Rows are numbered from 0 in the order they appear, per table; every reference is that number, or `بلا` where "none" is allowed. Code positions are labels in `.شفرة` (a label plus or minus a constant is fine). Written by the compiler; only objects in our format keep them (an ELF object has no debug region).
+
+| Directive | Row |
+|---|---|
+| `.ملف "مسار"، بصمة` | a source file and the FNV-1a hash of its bytes |
+| `.موضع ملف، سطر، عمود` | the code that follows (in `.شفرة`) comes from this position |
+| `.دالة "اسم"، رمز، بداية، نهاية، ملف، سطر، إطار، نتيجة` | a function: its symbol (or `بلا`), code range, declaration, frame size, result type (or `بلا`) |
+| `.نطاق دالة، أب، بداية، نهاية` | a block; parent scope or `بلا` (parents first) |
+| `.متغير "اسم"، نوع، معامل، نطاق، إزاحة` | also `محلي`; the offset is from `محفوظ٠` |
+| `.متغير "اسم"، نوع، عام، رمز` | a global variable and its symbol |
+| `.نوع صنف، …` | `صحيح، بتات` (flags `بإشارة`، `حجم`)؛ `منطقي`؛ `حرف`؛ `حقيقي، بتات`؛ `مؤشر، هدف` (flags `ثابت`، `متطاير`)؛ `اختياري، مؤشر`؛ `مصفوفة، عنصر، عدد`؛ `شريحة، عنصر` (flag `ثابت`)؛ `بنية، "اسم"، حجم، محاذاة، أول_حقل، عدد` (flag `مضغوطة`)؛ `تعداد، "اسم"، أساس، أول_عضو، عدد`؛ `دالة، نتيجة، أول_معامل، عدد`. Flags come last, each after a comma |
+| `.حقل "اسم"، نوع، إزاحة` | a structure field |
+| `.عضو "اسم"، قيمة` | an enumeration member |
+| `.معامل نوع` | one parameter type of a function type |
+
+After both passes every reference is checked; a row that refers to a missing row (or a line or scope out of order) is reported at its directive.
+
 ## Pseudo-instructions (approved)
 Each expands exactly as GNU as does with `-mno-relax`.
 

@@ -43,7 +43,7 @@ LIB_C="$LIB"
 LIB_G="$ROOT/مصدر/بناء/محزم"
 
 # objects of every kind: assembled, compiled with interfaces, a library, an executable
-for src in "$ROOT"/tests/asm/*.تجميع "$ROOT"/tests/link/*/*.تجميع; do
+for src in "$ROOT"/tests/asm/*.تجميع "$ROOT"/tests/link/*/*.تجميع "$ROOT"/tests/debug/*.تجميع; do
     name=$(basename "$(dirname "$src")")_$(basename "$src" .تجميع)
     "$AS" "$src" "$OUT/objs/$name.كائن" 2>/dev/null
 done
@@ -188,7 +188,7 @@ done
 (cd "$ROOT/os" && "$CC" نواة.غرة "$OUT/asm/os_نواة.تجميع" "$ROOT/lib" 2>/dev/null
  for p in برامج/*.غرة; do "$CC" "$p" "$OUT/asm/os_$(basename "$p" .غرة).تجميع" مستخدم "$ROOT/lib" 2>/dev/null; done)
 for tool in عارض محزم مجمع رابط; do "$CC" "$ROOT/مصدر/$tool.غرة" "$OUT/asm/tool_$tool.تجميع" "$ROOT/lib"; done
-sources=$(ls "$ROOT"/tests/asm/*.تجميع "$ROOT"/tests/link/*/*.تجميع "$ROOT"/os/*.تجميع "$ROOT"/lib/runtime/*.تجميع \
+sources=$(ls "$ROOT"/tests/asm/*.تجميع "$ROOT"/tests/link/*/*.تجميع "$ROOT"/tests/debug/*.تجميع "$ROOT"/os/*.تجميع "$ROOT"/lib/runtime/*.تجميع \
              "$ROOT"/os/مستخدم/runtime/*.تجميع "$OUT"/asm/*.تجميع)
 nsrc=0
 for src in $sources; do
@@ -209,7 +209,7 @@ for order in "" file; do
 done
 unset DIAG_ORDER
 # damaged sources: characters deleted, doubled or replaced, lines swapped
-python3 -I - "$OUT/asm" "$ROOT"/tests/asm/*.تجميع <<'PY' > "$OUT/asm_mutants.txt" || ok=0
+python3 -I - "$OUT/asm" "$ROOT"/tests/asm/*.تجميع "$ROOT"/tests/debug/*.تجميع <<'PY' > "$OUT/asm_mutants.txt" || ok=0
 import random, sys
 out, srcs = sys.argv[1], sys.argv[2:]
 rnd = random.Random(5)

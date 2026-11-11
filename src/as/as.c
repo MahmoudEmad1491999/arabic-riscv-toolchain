@@ -1418,6 +1418,395 @@ static int dir_global(Assembler *as)
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* Debug rows (decision 64, A87). Rows are collected in pass 2 only; the
+ * indexes they hold are checked once all rows exist (dbg_check). */
+
+static const char *const DBG_TYPE_KINDS[] = {"", "صحيح", "منطقي", "حرف", "حقيقي", "مؤشر", "اختياري",
+                                             "مصفوفة", "شريحة", "بنية", "تعداد", "دالة"};
+static const char *const DBG_FLAGS[] = {"بإشارة", "حجم", "ثابت", "متطاير", "مضغوطة"};
+
+static int is_word(const Token *t, const char *w)
+{
+    return t->kind == T_IDENT && t->text_len == strlen(w) && memcmp(t->text, w, t->text_len) == 0;
+}
+
+/* a number (constant expression) */
+static int dbg_num(Assembler *as, int64_t *out, int comma)
+{
+    if (comma && expect_comma(as) != 0) return -1;
+    return parse_constant(as, out);
+}
+
+/* an index into a table: a number from 0, or بلا where allowed */
+static int dbg_index(Assembler *as, uint32_t *out, int none_ok)
+{
+    Token *t;
+    int64_t v;
+    if (expect_comma(as) != 0) return -1;
+    t = tok(as);
+    if (none_ok && is_word(t, "بلا")) {
+        advance(as);
+        *out = OBJ_DBG_NONE;
+        return 0;
+    }
+    if (parse_constant(as, &v) != 0) return -1;
+    if (v < 0 || v >= (int64_t)OBJ_DBG_NONE) return error_tok(t, D_VALUE_RANGE);
+    *out = (uint32_t)v;
+    return 0;
+}
+
+static int dbg_u32(Assembler *as, uint32_t *out)
+{
+    Token *t;
+    int64_t v;
+    if (expect_comma(as) != 0) return -1;
+    t = tok(as);
+    if (parse_constant(as, &v) != 0) return -1;
+    if (v < 0 || v > 0xFFFFFFFFll) return error_tok(t, D_VALUE_RANGE);
+    *out = (uint32_t)v;
+    return 0;
+}
+
+/* a string: stored in the names, (offset, length) written to the row */
+static int dbg_name(Assembler *as, Buf *row)
+{
+    Token *t = tok(as);
+    if (t->kind != T_STRING) return error_tok(t, D_EXPECTED_STRING);
+    buf_u32(row, (uint32_t)as->dbg_names.len);
+    buf_u32(row, (uint32_t)t->str_len);
+    buf_bytes(&as->dbg_names, t->str, t->str_len);
+    advance(as);
+    return 0;
+}
+
+/* a code position: a label in .شفرة (checked in pass 2) */
+static int dbg_code(Assembler *as, uint64_t *out)
+{
+    Token *t;
+    Value v;
+    if (expect_comma(as) != 0) return -1;
+    t = tok(as);
+    if (parse_operand(as, &v) != 0) return -1;
+    *out = 0;
+    if (as->pass == 2) {
+        if (v.sym == NULL || v.reloc != RELOC_NONE || !v.sym->defined || v.sym->section != SEC_TEXT) {
+            return error_tok(t, D_DEBUG_NOT_TEXT);
+        }
+        *out = v.sym->value + (uint64_t)v.v;
+    }
+    return 0;
+}
+
+/* a symbol of this object, or بلا */
+static int dbg_symbol(Assembler *as, Symbol **out)
+{
+    Token *t;
+    if (expect_comma(as) != 0) return -1;
+    t = tok(as);
+    *out = NULL;
+    if (is_word(t, "بلا")) {
+        advance(as);
+        return 0;
+    }
+    if (t->kind != T_IDENT || t->text[0] == '.' || find_register(t->text, t->text_len) != -1) {
+        return error_tok(t, D_EXPECTED_SYMBOL);
+    }
+    *out = sym_get(as, t->text, t->text_len);
+    (*out)->referenced = 1;   /* stored in the object, so the row can name it */
+    advance(as);
+    if (as->pass == 2 && !(*out)->defined) return error_name(t, D_UNDEFINED_SYMBOL);
+    return 0;
+}
+
+static void dbg_add(Assembler *as, int table, const Token *head, Buf *row, Symbol *sym)
+{
+    if (as->pass != 2) return;
+    buf_bytes(&as->dbg[table], row->data, row->len);
+    buf_bytes(&as->dbg_at[table], &head, sizeof head);
+    buf_bytes(&as->dbg_sym[table], &sym, sizeof sym);
+}
+
+static int dir_debug(Assembler *as, DirKind k, const Token *head)
+{
+    Buf row;
+    Symbol *sym = NULL;
+    int table = (int)(k - DIR_DBG_FILE);
+    int rc = -1;
+    buf_init(&row);
+    switch (k) {
+    case DIR_DBG_FILE: {        /* .ملف "مسار"، بصمة */
+        int64_t hash;
+        if (dbg_name(as, &row) != 0 || dbg_num(as, &hash, 1) != 0) break;
+        buf_u64(&row, (uint64_t)hash);
+        rc = 0;
+        break;
+    }
+    case DIR_DBG_LINE: {        /* .موضع ملف، سطر، عمود: the code that follows */
+        uint32_t file, line, col;
+        Token *t = tok(as);
+        int64_t f;
+        if (as->cur != SEC_TEXT) { rc = error_tok(head, D_DEBUG_NOT_TEXT); break; }
+        if (parse_constant(as, &f) != 0) break;
+        if (f < 0 || f >= (int64_t)OBJ_DBG_NONE) { rc = error_tok(t, D_VALUE_RANGE); break; }
+        file = (uint32_t)f;
+        if (dbg_u32(as, &line) != 0 || dbg_u32(as, &col) != 0) break;
+        buf_u64(&row, cur_offset(as));
+        buf_u32(&row, file);
+        buf_u32(&row, line);
+        buf_u32(&row, col);
+        buf_u32(&row, 0);
+        rc = 0;
+        break;
+    }
+    case DIR_DBG_FUNC: {        /* .دالة "اسم"، رمز، بداية، نهاية، ملف، سطر، إطار، نتيجة */
+        uint64_t start, end;
+        uint32_t file, line, frame, result;
+        if (dbg_name(as, &row) != 0 || dbg_symbol(as, &sym) != 0 || dbg_code(as, &start) != 0 ||
+            dbg_code(as, &end) != 0 || dbg_index(as, &file, 0) != 0 || dbg_u32(as, &line) != 0 ||
+            dbg_u32(as, &frame) != 0 || dbg_index(as, &result, 1) != 0) break;
+        buf_u32(&row, OBJ_DBG_NONE);   /* symbol: filled in when written */
+        buf_u32(&row, file);
+        buf_u64(&row, start);
+        buf_u64(&row, end);
+        buf_u32(&row, line);
+        buf_u32(&row, frame);
+        buf_u32(&row, result);
+        buf_u32(&row, 0);
+        rc = 0;
+        break;
+    }
+    case DIR_DBG_SCOPE: {       /* .نطاق دالة، أب، بداية، نهاية */
+        uint32_t func, parent;
+        uint64_t start, end;
+        Token *t = tok(as);
+        int64_t f;
+        if (parse_constant(as, &f) != 0) break;
+        if (f < 0 || f >= (int64_t)OBJ_DBG_NONE) { rc = error_tok(t, D_VALUE_RANGE); break; }
+        func = (uint32_t)f;
+        if (dbg_index(as, &parent, 1) != 0 || dbg_code(as, &start) != 0 || dbg_code(as, &end) != 0) break;
+        buf_u32(&row, func);
+        buf_u32(&row, parent);
+        buf_u64(&row, start);
+        buf_u64(&row, end);
+        rc = 0;
+        break;
+    }
+    case DIR_DBG_VAR: {         /* .متغير "اسم"، نوع، معامل|محلي، نطاق، إزاحة  أو  ...، عام، رمز */
+        uint32_t type, scope = OBJ_DBG_NONE;
+        int64_t where = 0;
+        uint8_t kind;
+        Token *kt;
+        if (dbg_name(as, &row) != 0 || dbg_index(as, &type, 0) != 0 || expect_comma(as) != 0) break;
+        kt = tok(as);
+        if (is_word(kt, "معامل")) kind = OBJ_VAR_PARAM;
+        else if (is_word(kt, "محلي")) kind = OBJ_VAR_LOCAL;
+        else if (is_word(kt, "عام")) kind = OBJ_VAR_GLOBAL;
+        else { rc = error_name(kt, D_DEBUG_KIND); break; }
+        advance(as);
+        if (kind == OBJ_VAR_GLOBAL) {
+            if (dbg_symbol(as, &sym) != 0) break;
+            where = (int64_t)OBJ_DBG_NONE;   /* filled in when written */
+        } else if (dbg_index(as, &scope, 1) != 0 || dbg_num(as, &where, 1) != 0) {
+            break;
+        }
+        buf_u32(&row, type);
+        buf_u32(&row, scope);
+        buf_u8(&row, kind);
+        buf_u8(&row, 0);
+        buf_u16(&row, 0);
+        buf_u32(&row, 0);
+        buf_u64(&row, (uint64_t)where);
+        rc = 0;
+        break;
+    }
+    case DIR_DBG_TYPE: {        /* .نوع صنف، ... (docs/spec-assembler.md) */
+        Token *kt = tok(as);
+        uint8_t kind = 0, flags = 0;
+        uint32_t a = 0, c = 0, d = 0, name_off = 0, name_len = 0, allowed = 0;
+        uint64_t b = 0;
+        int i;
+        for (i = 1; i <= OBJ_TY_LAST; i++) {
+            if (is_word(kt, DBG_TYPE_KINDS[i])) kind = (uint8_t)i;
+        }
+        if (kind == 0) { rc = error_name(kt, D_DEBUG_KIND); break; }
+        advance(as);
+        if (kind == OBJ_TY_STRUCT || kind == OBJ_TY_ENUM) {
+            Buf nm;
+            buf_init(&nm);
+            if (expect_comma(as) != 0 || dbg_name(as, &nm) != 0) { buf_free(&nm); break; }
+            memcpy(&name_off, nm.data, 4);
+            memcpy(&name_len, nm.data + 4, 4);
+            buf_free(&nm);
+        }
+        rc = 0;
+        switch (kind) {
+        case OBJ_TY_INT:
+        case OBJ_TY_REAL: {
+            Token *bt;
+            int64_t bits;
+            if (expect_comma(as) != 0) { rc = -1; break; }
+            bt = tok(as);
+            if (parse_constant(as, &bits) != 0) { rc = -1; break; }
+            a = (uint32_t)bits;
+            if (bits != (int64_t)a ||
+                kind == OBJ_TY_INT ? (a != 8 && a != 16 && a != 32 && a != 64) : (a != 32 && a != 64)) {
+                rc = error_tok(bt, D_VALUE_RANGE);
+            }
+            allowed = kind == OBJ_TY_INT ? (OBJ_TYF_SIGNED | OBJ_TYF_SIZE) : 0;
+            break;
+        }
+        case OBJ_TY_PTR:
+            rc = dbg_index(as, &a, 0);
+            allowed = OBJ_TYF_READONLY | OBJ_TYF_VOLATILE;
+            break;
+        case OBJ_TY_OPT:
+            rc = dbg_index(as, &a, 0);
+            break;
+        case OBJ_TY_ARRAY: {
+            int64_t n;
+            if (dbg_index(as, &a, 0) != 0 || dbg_num(as, &n, 1) != 0) { rc = -1; break; }
+            b = (uint64_t)n;
+            break;
+        }
+        case OBJ_TY_SLICE:
+            rc = dbg_index(as, &a, 0);
+            allowed = OBJ_TYF_READONLY;
+            break;
+        case OBJ_TY_STRUCT: {   /* .نوع بنية "اسم"، حجم، محاذاة، أول، عدد[، مضغوطة] */
+            int64_t size;
+            if (dbg_num(as, &size, 1) != 0 || dbg_u32(as, &a) != 0 || dbg_index(as, &c, 0) != 0 ||
+                dbg_u32(as, &d) != 0) { rc = -1; break; }
+            b = (uint64_t)size;
+            allowed = OBJ_TYF_PACKED;
+            break;
+        }
+        case OBJ_TY_ENUM:       /* .نوع تعداد "اسم"، أساس، أول، عدد */
+            if (dbg_index(as, &a, 0) != 0 || dbg_index(as, &c, 0) != 0 || dbg_u32(as, &d) != 0) rc = -1;
+            break;
+        case OBJ_TY_FUNC:       /* .نوع دالة نتيجة، أول، عدد */
+            if (dbg_index(as, &a, 1) != 0 || dbg_index(as, &c, 0) != 0 || dbg_u32(as, &d) != 0) rc = -1;
+            break;
+        default:
+            break;
+        }
+        while (rc == 0 && tok(as)->kind == T_COMMA) {
+            Token *ft;
+            int bit = -1;
+            advance(as);
+            ft = tok(as);
+            for (i = 0; i < 5; i++) {
+                if (is_word(ft, DBG_FLAGS[i])) bit = 1 << i;
+            }
+            if (bit < 0 || !(allowed & (uint32_t)bit) || (flags & bit)) { rc = error_name(ft, D_DEBUG_FLAG); break; }
+            flags |= (uint8_t)bit;
+            advance(as);
+        }
+        if (rc != 0) break;
+        buf_u8(&row, kind);
+        buf_u8(&row, flags);
+        buf_u16(&row, 0);
+        buf_u32(&row, name_off);
+        buf_u32(&row, name_len);
+        buf_u32(&row, a);
+        buf_u64(&row, b);
+        buf_u32(&row, c);
+        buf_u32(&row, d);
+        break;
+    }
+    case DIR_DBG_FIELD: {       /* .حقل "اسم"، نوع، إزاحة */
+        uint32_t type;
+        int64_t off;
+        if (dbg_name(as, &row) != 0 || dbg_index(as, &type, 0) != 0 || dbg_num(as, &off, 1) != 0) break;
+        buf_u32(&row, type);
+        buf_u32(&row, 0);
+        buf_u64(&row, (uint64_t)off);
+        rc = 0;
+        break;
+    }
+    case DIR_DBG_MEMBER: {      /* .عضو "اسم"، قيمة */
+        int64_t v;
+        if (dbg_name(as, &row) != 0 || dbg_num(as, &v, 1) != 0) break;
+        buf_u64(&row, (uint64_t)v);
+        rc = 0;
+        break;
+    }
+    default: {                  /* .معامل نوع */
+        Token *t = tok(as);
+        int64_t v;
+        if (parse_constant(as, &v) != 0) break;
+        if (v < 0 || v >= (int64_t)OBJ_DBG_NONE) { rc = error_tok(t, D_VALUE_RANGE); break; }
+        buf_u32(&row, (uint32_t)v);
+        buf_u32(&row, 0);
+        rc = 0;
+        break;
+    }
+    }
+    if (rc == 0) dbg_add(as, table, head, &row, sym);
+    buf_free(&row);
+    return rc;
+}
+
+/* the region as rows say it; symbols as written (index) or بلا */
+static void dbg_region(Assembler *as, Buf *out, int with_symbols)
+{
+    int t;
+    size_t i;
+    for (t = 0; t < OBJ_DBG_NTABLES; t++) buf_u32(out, (uint32_t)(as->dbg[t].len / obj_dbg_row[t]));
+    buf_u32(out, (uint32_t)as->dbg_names.len);
+    buf_u64(out, 0);
+    for (t = 0; t < OBJ_DBG_NTABLES; t++) {
+        size_t start = out->len, n = as->dbg[t].len / obj_dbg_row[t];
+        Symbol **syms = (Symbol **)as->dbg_sym[t].data;
+        buf_bytes(out, as->dbg[t].data, as->dbg[t].len);
+        if (!with_symbols) continue;
+        for (i = 0; i < n; i++) {
+            uint8_t *r = out->data + start + i * obj_dbg_row[t];
+            uint32_t idx = syms[i] != NULL ? syms[i]->elf_index : OBJ_DBG_NONE;
+            if (t == OBJ_DBG_FUNCS) {
+                memcpy(r + 8, &idx, 4);   /* little-endian host, like buf_u32 */
+            } else if (t == OBJ_DBG_VARS && r[16] == OBJ_VAR_GLOBAL) {
+                uint64_t w = idx;
+                memcpy(r + 24, &w, 8);
+            }
+        }
+    }
+    buf_bytes(out, as->dbg_names.data, as->dbg_names.len);
+}
+
+static int dbg_has_rows(const Assembler *as)
+{
+    int t;
+    for (t = 0; t < OBJ_DBG_NTABLES; t++) {
+        if (as->dbg[t].len != 0) return 1;
+    }
+    return 0;
+}
+
+/* every index refers to a row that exists, lines and scopes in order */
+static int dbg_check(Assembler *as)
+{
+    Buf region;
+    ObjDebug g;
+    int rc = 0;
+    if (!dbg_has_rows(as)) return 0;
+    buf_init(&region);
+    dbg_region(as, &region, 0);
+    if (obj_debug_decode(region.data, region.len, as->sec[SEC_TEXT].data.len, 0, 0, &g) != 0) {
+        int t = g.bad_table;
+        uint32_t r = g.bad_row;
+        const Token *at;
+        if (t < 0) {   /* not expected: the counts come from the rows themselves */
+            for (t = 0; as->dbg_at[t].len == 0; t++) {}
+            r = 0;
+        }
+        at = ((const Token **)as->dbg_at[t].data)[r];
+        rc = error_tok(at, D_DEBUG_REF);
+    }
+    buf_free(&region);
+    return rc;
+}
+
 static int directive(Assembler *as)
 {
     Token *head = tok(as);
@@ -1459,6 +1848,8 @@ static int directive(Assembler *as)
         return dir_equ(as);
     case DIR_INCBIN:
         return dir_incbin(as, head);
+    default:
+        return dir_debug(as, k, head);
     }
     return error_name(head, D_UNKNOWN_INSN);
 }
@@ -1542,6 +1933,12 @@ static void run_pass(Assembler *as, int pass)
     as->pos = 0;
     as->cur = SEC_TEXT;
     as->locals.len = 0;
+    for (i = 0; i < OBJ_DBG_NTABLES; i++) {
+        as->dbg[i].len = 0;
+        as->dbg_at[i].len = 0;
+        as->dbg_sym[i].len = 0;
+    }
+    as->dbg_names.len = 0;
     for (i = 0; i < SEC_COUNT; i++) {
         as->sec[i].data.len = 0;
         as->sec[i].size = 0;
@@ -1576,6 +1973,12 @@ void as_init(Assembler *as, Arena *a, const TokenList *tl)
     as->tl = *tl;
     buf_init(&as->symbols);
     buf_init(&as->locals);
+    buf_init(&as->dbg_names);
+    for (i = 0; i < OBJ_DBG_NTABLES; i++) {
+        buf_init(&as->dbg[i]);
+        buf_init(&as->dbg_at[i]);
+        buf_init(&as->dbg_sym[i]);
+    }
     for (i = 0; i < SEC_COUNT; i++) {
         buf_init(&as->sec[i].data);
         buf_init(&as->sec[i].relocs);
@@ -1589,6 +1992,12 @@ void as_free(Assembler *as)
     int i;
     buf_free(&as->symbols);
     buf_free(&as->locals);
+    buf_free(&as->dbg_names);
+    for (i = 0; i < OBJ_DBG_NTABLES; i++) {
+        buf_free(&as->dbg[i]);
+        buf_free(&as->dbg_at[i]);
+        buf_free(&as->dbg_sym[i]);
+    }
     for (i = 0; i < SEC_COUNT; i++) {
         buf_free(&as->sec[i].data);
         buf_free(&as->sec[i].relocs);
@@ -1602,6 +2011,7 @@ int as_assemble(Assembler *as)
         return -1;
     }
     run_pass(as, 2);
+    if (diag_count() == 0) dbg_check(as);
     return diag_count() != 0 ? -1 : 0;
 }
 
@@ -1852,7 +2262,7 @@ int as_write_obj(Assembler *as, const char *path, const uint8_t *iface, size_t i
 {
     Symbol **syms = (Symbol **)as->symbols.data;
     size_t nsyms = as->symbols.len / sizeof *syms;
-    Buf osyms, orels, out;
+    Buf osyms, orels, out, debug;
     ObjOut o;
     uint32_t index = 0;
     size_t i;
@@ -1861,6 +2271,7 @@ int as_write_obj(Assembler *as, const char *path, const uint8_t *iface, size_t i
     buf_init(&osyms);
     buf_init(&orels);
     buf_init(&out);
+    buf_init(&debug);
     for (pass = 0; pass < 2; pass++) { /* private first, then exported/imported */
         for (i = 0; i < nsyms; i++) {
             Symbol *s = syms[i];
@@ -1923,11 +2334,17 @@ int as_write_obj(Assembler *as, const char *path, const uint8_t *iface, size_t i
         o.nrelocs = orels.len / sizeof(ObjReloc);
         o.iface = iface;
         o.iface_len = iface_len;
+        if (dbg_has_rows(as)) {
+            dbg_region(as, &debug, 1);
+            o.debug = debug.data;
+            o.debug_len = debug.len;
+        }
         obj_serialize(&o, &out);
         rc = rt_write_file(path, out.data, out.len);
     }
     buf_free(&osyms);
     buf_free(&orels);
     buf_free(&out);
+    buf_free(&debug);
     return rc;
 }

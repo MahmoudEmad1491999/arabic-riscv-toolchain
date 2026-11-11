@@ -84,5 +84,6 @@
 - [x] Compiler: `حقيقي٢٣` / `حقيقي٤٦`, correctly rounded literals, `+ - * /`, comparisons that stop on NaN, `ليس_عددا`، `ضرب_جمع`, the explicit conversions (`حول`، `قرب`، `حول_بفحص`، `اقتطع`، `قرب_لأقرب`، `أرضية`، `سقف`، `اعتبر`), folding equal to run time, the LP64D scalar ABI (A84); tested against GCC objects; ported to غرة byte-identically, stage 2 = stage 3 still holds
 - [x] OS: floating-point state per process (FS on, f0–f31 and fcsr saved and restored at each switch, A85), tested with two processes computing at once
 - [x] Debug format, stage 1: object format v2 with the `تنقيح` region (A86): reader with full validation, writer, `عارض` text form, the OS loader; ported to غرة, identical on a hand-made region and 1168 damaged copies
-- [ ] Debug format, next stages: assembler directives, linker merge and the `.تنقيح` ELF section, compiler emission, file:line and call chain at run-time stops, each ported
+- [x] Debug format, stage 2: the assembler directives (A87), one per row, references checked; ported, identical on the fixture and on 500 damaged copies
+- [ ] Debug format, next stages: linker merge and the `.تنقيح` ELF section, compiler emission, file:line and call chain at run-time stops, each ported
 - [ ] LP64D flattening for small structures with reals
