@@ -28,7 +28,33 @@ typedef struct {
     int32_t hidden_ret_slot; /* where the caller's result pointer is kept */
     int break_label[64], cont_label[64];
     int loop_depth;
+    /* --تنقيح (decision 64, A89): rows written at the end of each function
+     * (functions, scopes, variables) and of the file (types and the rest) */
+    int debug;
+    int nfuncs, nscopes, cur_scope;
+    Buf scopes;        /* DbgScope of the current function */
+    Buf vars;          /* DbgVar of the current function */
+    Buf tymap;         /* Type* per row of the types table */
+    Buf types;         /* DbgLine per row of the types table */
+    Buf fields, members, params;   /* the directives, as text */
+    int nfields, nmembers, nparams;
 } Gen;
+
+typedef struct {
+    int parent;        /* -1: none */
+    int start, end;    /* labels */
+} DbgScope;
+
+typedef struct {
+    Local *local;
+    int scope;
+    int param;
+} DbgVar;
+
+typedef struct {
+    const uint8_t *text;
+    size_t len;
+} DbgLine;
 
 /* ------------------------------------------------------------------ */
 /* Text output                                                         */
@@ -1296,7 +1322,31 @@ static void gen_stmt(Gen *g, Stmt *s);
 static void gen_block(Gen *g, Stmt *b)
 {
     size_t i;
+    DbgScope sc;
+    int saved = g->cur_scope;
+    if (g->debug) {
+        sc.parent = g->cur_scope;
+        sc.start = new_label(g);
+        sc.end = new_label(g);
+        emit_label_def(g, sc.start);
+        buf_bytes(&g->scopes, &sc, sizeof sc);
+        g->cur_scope = g->nscopes++;
+    }
     for (i = 0; i < b->nstmts; i++) gen_stmt(g, b->stmts[i]);
+    if (g->debug) {
+        emit_label_def(g, sc.end);
+        g->cur_scope = saved;
+    }
+}
+
+static void dbg_var(Gen *g, Local *l, int param)
+{
+    DbgVar v;
+    if (!g->debug || l == NULL) return;
+    v.local = l;
+    v.scope = g->cur_scope;
+    v.param = param;
+    buf_bytes(&g->vars, &v, sizeof v);
 }
 
 static void assign_to_local(Gen *g, Local *l, Expr *value)
@@ -1317,6 +1367,20 @@ static void gen_loop_body(Gen *g, Stmt *body, int brk, int cont)
 
 static void gen_stmt(Gen *g, Stmt *s)
 {
+    if (g->debug && s->kind != S_BLOCK) {
+        emit(g, ".موضع ");
+        emit_num(g, g->fn->module->debug_file);
+        emit(g, "، ");
+        emit_num(g, s->tok.line);
+        emit(g, "، ");
+        emit_num(g, s->tok.col);
+        emit(g, "\n");
+    }
+    if (s->kind == S_VAR || s->kind == S_IF_FOUND || s->kind == S_FOR_RANGE) dbg_var(g, s->local, 0);
+    if (s->kind == S_FOR_EACH) {
+        dbg_var(g, s->local, 0);
+        dbg_var(g, s->local2, 0);
+    }
     switch (s->kind) {
     case S_BLOCK:
         gen_block(g, s);
@@ -1519,6 +1583,244 @@ static void gen_stmt(Gen *g, Stmt *s)
 /* ------------------------------------------------------------------ */
 /* Functions and data                                                  */
 
+/* ------------------------------------------------------------------ */
+/* Debug rows (--تنقيح)                                               */
+
+static void emit_quoted(Gen *g, const uint8_t *s, size_t n)
+{
+    emit(g, "\"");
+    emitb(g, s, n);
+    emit(g, "\"");
+}
+
+static void emit_index(Gen *g, int i)
+{
+    if (i < 0) emit(g, "بلا");
+    else emit_num(g, i);
+}
+
+/* the row of type t in the types table, added (with what it refers to) if new */
+static int dbg_type(Gen *g, const Type *t)
+{
+    Type **map = (Type **)g->tymap.data;
+    size_t n = g->tymap.len / sizeof *map, i;
+    int idx, a = 0, first = 0, count = 0;
+    Buf *saved = g->out;
+    Buf line;
+    for (i = 0; i < n; i++) {
+        if (ty_equal(map[i], t) && map[i]->kind == t->kind) return (int)i;
+    }
+    idx = (int)n;
+    buf_bytes(&g->tymap, &t, sizeof t);
+    {
+        DbgLine empty = {NULL, 0};
+        buf_bytes(&g->types, &empty, sizeof empty);   /* filled below */
+    }
+    buf_init(&line);
+    /* what the row refers to comes first, so nested fields stay together */
+    switch (t->kind) {
+    case T_PTR: case T_OPT: case T_ARRAY: case T_SLICE:
+        a = dbg_type(g, t->elem);
+        break;
+    case T_ENUM:
+        a = dbg_type(g, t->decl->underlying);
+        break;
+    case T_FUNC:
+        a = t->elem != NULL ? dbg_type(g, t->elem) : -1;
+        for (i = 0; i < t->nparams; i++) dbg_type(g, t->params[i]);
+        break;
+    case T_STRUCT:
+        for (i = 0; i < t->decl->nfields; i++) dbg_type(g, t->decl->fields[i].type);
+        break;
+    default:
+        break;
+    }
+    g->out = &line;
+    emit(g, ".نوع ");
+    switch (t->kind) {
+    case T_INT:
+        emit(g, "صحيح، ");
+        emit_num(g, t->is_size ? 64 : t->bits);
+        if (t->is_signed) emit(g, "، بإشارة");
+        if (t->is_size) emit(g, "، حجم");
+        break;
+    case T_BOOL: emit(g, "منطقي"); break;
+    case T_CHAR: emit(g, "حرف"); break;
+    case T_FLOAT:
+        emit(g, "حقيقي، ");
+        emit_num(g, t->bits);
+        break;
+    case T_PTR:
+        emit(g, "مؤشر، ");
+        emit_num(g, a);
+        if (t->readonly) emit(g, "، ثابت");
+        if (t->vol) emit(g, "، متطاير");
+        break;
+    case T_OPT:
+        emit(g, "اختياري، ");
+        emit_num(g, a);
+        break;
+    case T_ARRAY:
+        emit(g, "مصفوفة، ");
+        emit_num(g, a);
+        emit(g, "، ");
+        emit_unum(g, t->count);
+        break;
+    case T_SLICE:
+        emit(g, "شريحة، ");
+        emit_num(g, a);
+        if (t->readonly) emit(g, "، ثابت");
+        break;
+    case T_STRUCT: {
+        Buf *saved2 = g->out;
+        first = g->nfields;
+        count = (int)t->decl->nfields;
+        g->out = &g->fields;
+        for (i = 0; i < t->decl->nfields; i++) {
+            const Field *f = &t->decl->fields[i];
+            emit(g, ".حقل ");
+            emit_quoted(g, f->name, f->len);
+            emit(g, "، ");
+            emit_num(g, dbg_type(g, f->type));
+            emit(g, "، ");
+            emit_unum(g, f->offset);
+            emit(g, "\n");
+        }
+        g->nfields += count;
+        g->out = saved2;
+        emit(g, "بنية، ");
+        emit_quoted(g, t->decl->name, t->decl->len);
+        emit(g, "، ");
+        emit_unum(g, t->decl->size);
+        emit(g, "، ");
+        emit_unum(g, t->decl->align);
+        emit(g, "، ");
+        emit_num(g, first);
+        emit(g, "، ");
+        emit_num(g, count);
+        if (t->decl->packed) emit(g, "، مضغوطة");
+        break;
+    }
+    case T_ENUM: {
+        Buf *saved2 = g->out;
+        first = g->nmembers;
+        count = (int)t->decl->nmembers;
+        g->out = &g->members;
+        for (i = 0; i < t->decl->nmembers; i++) {
+            const EnumMember *m = &t->decl->members[i];
+            emit(g, ".عضو ");
+            emit_quoted(g, m->name, m->len);
+            emit(g, "، ");
+            if (m->value.neg) {
+                emit(g, "-");
+                emit_unum(g, m->value.mag);
+            } else {
+                emit_unum(g, m->value.mag);
+            }
+            emit(g, "\n");
+        }
+        g->nmembers += count;
+        g->out = saved2;
+        emit(g, "تعداد، ");
+        emit_quoted(g, t->decl->name, t->decl->len);
+        emit(g, "، ");
+        emit_num(g, a);
+        emit(g, "، ");
+        emit_num(g, first);
+        emit(g, "، ");
+        emit_num(g, count);
+        break;
+    }
+    default: { /* T_FUNC */
+        Buf *saved2 = g->out;
+        first = g->nparams;
+        count = (int)t->nparams;
+        g->out = &g->params;
+        for (i = 0; i < t->nparams; i++) {
+            emit(g, ".معامل ");
+            emit_num(g, dbg_type(g, t->params[i]));
+            emit(g, "\n");
+        }
+        g->nparams += count;
+        g->out = saved2;
+        emit(g, "دالة، ");
+        emit_index(g, a);
+        emit(g, "، ");
+        emit_num(g, first);
+        emit(g, "، ");
+        emit_num(g, count);
+        break;
+    }
+    }
+    emit(g, "\n");
+    g->out = saved;
+    {
+        /* rows are numbered by position: this line is row idx */
+        DbgLine *rows = (DbgLine *)g->types.data;
+        uint8_t *copy = arena_alloc(g->prog->arena, line.len);
+        memcpy(copy, line.data, line.len);
+        rows[idx].text = copy;
+        rows[idx].len = line.len;
+    }
+    buf_free(&line);
+    return idx;
+}
+
+/* the rows of a function, after its code: the function, its scopes (in
+ * the order they were opened, so parents come first), its variables */
+static void dbg_function(Gen *g, Decl *d, int64_t frame)
+{
+    DbgScope *sc = (DbgScope *)g->scopes.data;
+    DbgVar *vs = (DbgVar *)g->vars.data;
+    size_t n = g->scopes.len / sizeof *sc, nv = g->vars.len / sizeof *vs, i;
+    int end = new_label(g), result = d->ret != NULL ? dbg_type(g, d->ret) : -1;
+    int first_scope = g->nscopes - (int)n;
+    emit_label_def(g, end);
+    emit(g, ".دالة ");
+    emit_quoted(g, d->name, d->len);
+    emit(g, "، ");
+    emit_sym(g, d);
+    emit(g, "، ");
+    emit_sym(g, d);
+    emit(g, "، ");
+    emit_label_name(g, end);
+    emit(g, "، ");
+    emit_num(g, d->module->debug_file);
+    emit(g, "، ");
+    emit_num(g, d->tok.line);
+    emit(g, "، ");
+    emit_num(g, frame);
+    emit(g, "، ");
+    emit_index(g, result);
+    emit(g, "\n");
+    for (i = 0; i < n; i++) {
+        emit(g, ".نطاق ");
+        emit_num(g, g->nfuncs);
+        emit(g, "، ");
+        emit_index(g, sc[i].parent);
+        emit(g, "، ");
+        emit_label_name(g, sc[i].start);
+        emit(g, "، ");
+        emit_label_name(g, sc[i].end);
+        emit(g, "\n");
+    }
+    (void)first_scope;
+    for (i = 0; i < nv; i++) {
+        Local *l = vs[i].local;
+        if (l->offset == 0) continue;   /* never given a place in the frame */
+        emit(g, ".متغير ");
+        emit_quoted(g, l->name, l->len);
+        emit(g, "، ");
+        emit_num(g, dbg_type(g, l->type));
+        emit(g, vs[i].param ? "، معامل، " : "، محلي، ");
+        emit_index(g, vs[i].scope);
+        emit(g, "، ");
+        emit_num(g, l->offset);
+        emit(g, "\n");
+    }
+    g->nfuncs++;
+}
+
 static void gen_function(Gen *g, Decl *d)
 {
     Buf *saved_out = g->out;
@@ -1527,6 +1829,14 @@ static void gen_function(Gen *g, Decl *d)
 
     g->fn = d;
     g->frame = 16;          /* saved return address and frame pointer */
+    if (g->debug) {
+        size_t k;
+        g->scopes.len = 0;
+        g->vars.len = 0;
+        g->cur_scope = g->nscopes;   /* parameters belong to the body's scope */
+        for (k = 0; k < d->nparams; k++) dbg_var(g, d->params[k], 1);
+        g->cur_scope = -1;
+    }
     g->loop_depth = 0;
     g->ret_label = new_label(g);
     buf_init(&g->text);
@@ -1613,6 +1923,7 @@ static void gen_function(Gen *g, Decl *d)
         mem_op(g, "حمل_كلمة_مزدوجة", "محفوظ٠", "مؤقت١", -16);
         ins(g, "نسخ", "مؤشر_المكدس", "مؤقت١", NULL);
         emit(g, "    عودة\n");
+        if (g->debug) dbg_function(g, d, frame);
     }
     buf_free(&g->text);
 }
@@ -1724,6 +2035,27 @@ int gen_program(Program *p, Buf *out)
     }
 
     emit(&g, "# ولده مترجم غرة\n.شفرة\n");
+    g.debug = p->debug;
+    if (g.debug) {
+        int nfiles = 0;
+        buf_init(&g.scopes);
+        buf_init(&g.vars);
+        buf_init(&g.tymap);
+        buf_init(&g.types);
+        buf_init(&g.fields);
+        buf_init(&g.members);
+        buf_init(&g.params);
+        for (i = 0; i < p->nmodules; i++) {
+            Module *m = p->modules[i];
+            if (!emits(p, m)) continue;
+            m->debug_file = nfiles++;
+            emit(&g, ".ملف ");
+            emit_quoted(&g, (const uint8_t *)m->path, strlen(m->path));
+            emit(&g, "، ");
+            emit_unum(&g, m->source_hash);
+            emit(&g, "\n");
+        }
+    }
     for (i = 0; i < p->nmodules; i++) {
         Module *m = p->modules[i];
         if (!emits(p, m)) continue;
@@ -1755,6 +2087,15 @@ int gen_program(Program *p, Buf *out)
             emit_sym(&g, d);
             emit(&g, ":\n");
             gen_data(&g, d->init, d->type);
+            if (g.debug) {
+                emit(&g, ".متغير ");
+                emit_quoted(&g, d->name, d->len);
+                emit(&g, "، ");
+                emit_num(&g, dbg_type(&g, d->type));
+                emit(&g, "، عام، ");
+                emit_sym(&g, d);
+                emit(&g, "\n");
+            }
         }
     }
 
@@ -1774,6 +2115,22 @@ int gen_program(Program *p, Buf *out)
                 if (k % 16 == 15 || k + 1 == strs[i]->tok.str_len) emit(&g, "\n");
             }
         }
+    }
+    if (g.debug) {
+        DbgLine *rows = (DbgLine *)g.types.data;
+        size_t n = g.types.len / sizeof *rows;
+        emit(&g, "\n");
+        for (i = 0; i < n; i++) emitb(&g, rows[i].text, rows[i].len);
+        emitb(&g, g.fields.data, g.fields.len);
+        emitb(&g, g.members.data, g.members.len);
+        emitb(&g, g.params.data, g.params.len);
+        buf_free(&g.scopes);
+        buf_free(&g.vars);
+        buf_free(&g.tymap);
+        buf_free(&g.types);
+        buf_free(&g.fields);
+        buf_free(&g.members);
+        buf_free(&g.params);
     }
     return 0;
 }

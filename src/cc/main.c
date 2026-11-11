@@ -1,6 +1,6 @@
 /* main.c - مترجم: the غرة compiler.
  * Usage:
- *   مترجم رئيسي.غرة [--عاري | --برنامج] [مسار_بحث | ملف.o | ملف.كائن | ملف.مكتبة | ملف.تجميع ...]
+ *   مترجم رئيسي.غرة [--عاري | --برنامج] [--تنقيح] [مسار_بحث | ملف.o | ملف.كائن | ملف.مكتبة | ملف.تجميع ...]
  *     build: one .كائن per module in بناء/ (only what is out of date), then
  *     link بناء/رئيسي (decision 37). --عاري: a bare-metal image at
  *     0x80000000 with no hosted start file; the program brings its own
@@ -325,14 +325,15 @@ static int encode_iface(Arena *a, Module *m, Buf *region)
 
 /* Up to date: the object exists and carries exactly this interface region
  * (same source hash, same hashes of the imported interfaces). */
-static int up_to_date(const char *path, const Buf *region)
+static int up_to_date(const char *path, const Buf *region, int debug)
 {
     RtBuf file;
     ObjView v;
     int same;
     if (rt_read_file(path, &file) != 0) return 0;
     same = obj_parse(file.data, file.len, &v) == 0 && v.iface_size == region->len &&
-           memcmp(file.data + v.iface_off, region->data, region->len) == 0;
+           memcmp(file.data + v.iface_off, region->data, region->len) == 0 &&
+           (v.debug_size != 0) == (debug != 0);   /* built with the same --تنقيح */
     rt_free(file.data);
     return same;
 }
@@ -387,7 +388,7 @@ static int build(Arena *a, Program *prog, const char *rootdir, const uint8_t *st
         buf_init(&region);
         if (encode_iface(a, m, &region) != 0) {
             rc = 1;
-        } else if (!up_to_date(obj, &region)) {
+        } else if (!up_to_date(obj, &region, prog->debug)) {
             char *asm_name = join_path_ext(a, out_dir, m->name, m->name_len, ".تجميع");
             buf_init(&text);
             prog->only = m;
@@ -449,7 +450,7 @@ int main(int argc, char **argv)
     int first_path;
     const char **extras, **asms;
     size_t nextras = 0, nasms = 0;
-    int bare = 0;
+    int bare = 0, debug = 0;
 
     if (argc < 2) {
         diag_plain(D_CC_USAGE, NULL);
@@ -483,7 +484,9 @@ int main(int argc, char **argv)
     l.dirs[l.ndirs++] = rootdir;
     for (i = (size_t)first_path; i < (size_t)argc; i++) {
         const char *arg = argv[i];
-        if (strcmp(arg, "--عاري") == 0) {
+        if (strcmp(arg, "--تنقيح") == 0) {
+            debug = 1;
+        } else if (strcmp(arg, "--عاري") == 0) {
             bare = 1;
         } else if (strcmp(arg, "--برنامج") == 0) {
             bare = 2;
@@ -523,6 +526,7 @@ int main(int argc, char **argv)
     }
 
     memset(&prog, 0, sizeof prog);
+    prog.debug = debug;
     prog.arena = &arena;
     buf_init(&prog.strings);
     if (rc == 0) {

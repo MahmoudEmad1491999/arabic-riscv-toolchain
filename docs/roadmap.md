@@ -86,5 +86,6 @@
 - [x] Debug format, stage 1: object format v2 with the `تنقيح` region (A86): reader with full validation, writer, `عارض` text form, the OS loader; ported to غرة, identical on a hand-made region and 1168 damaged copies
 - [x] Debug format, stage 2: the assembler directives (A87), one per row, references checked; ported, identical on the fixture and on 500 damaged copies
 - [x] Debug format, stage 3: the linker merges the regions (A88): programs keep them, ELF executables get a `.تنقيح` section; ported, identical on the fixtures and on 600 links with damaged regions
-- [ ] Debug format, next stages: compiler emission, file:line and call chain at run-time stops, each ported
+- [x] Debug format, stage 4: the compiler writes the debug rows with `--تنقيح` (A89); every compiler test also runs built that way; ported, identical on the tests, the OS programs, the tools and in build mode
+- [ ] Debug format, next stage:, file:line and call chain at run-time stops, each ported
 - [ ] LP64D flattening for small structures with reals

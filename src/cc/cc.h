@@ -47,6 +47,7 @@ typedef struct Program {
     Decl *main_func;
     int no_main;          /* compiling a library module: no رئيسية needed */
     Module *only;         /* gen: emit this module only (NULL: every module with bodies) */
+    int debug;            /* --تنقيح: write debug rows (decision 64, A89) */
 } Program;
 
 int check_program(Program *p);

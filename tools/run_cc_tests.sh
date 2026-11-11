@@ -46,6 +46,27 @@ for src in "$ROOT"/tests/cc/*.غرة; do
     report "cc/$name" $ok
 done
 
+# the same programs with --تنقيح (A89), assembled into our format: the debug
+# rows must be accepted and must not change what the program does
+for src in "$ROOT"/tests/cc/*.غرة; do
+    name=$(basename "$src" .غرة)
+    ok=1
+    extra=""
+    [ -f "$ROOT/tests/cc/$name.c" ] && extra="$OUT/$name.c.o"
+    if DIAG_ORDER=file "$CC" "$src" "$OUT/$name.dbg.تجميع" "$ROOT/lib" --تنقيح 2> "$OUT/$name.dbg.stderr" &&
+       "$AS" "$OUT/$name.dbg.تجميع" "$OUT/$name.dbg.كائن" &&
+       "$LD" "$OUT/$name.dbg" "$OUT/$name.dbg.كائن" "$OUT/runtime.o" $extra; then
+        qemu-riscv64 "$OUT/$name.dbg" > "$OUT/$name.dbg.stdout" 2> /dev/null
+        code=$?
+        want=0
+        [ -f "$ROOT/tests/cc/$name.code" ] && want=$(cat "$ROOT/tests/cc/$name.code")
+        [ "$code" = "$want" ] && cmp -s "$ROOT/tests/cc/$name.out" "$OUT/$name.dbg.stdout" || ok=0
+    else
+        ok=0
+    fi
+    report "cc/$name --تنقيح" $ok
+done
+
 for src in "$ROOT"/tests/cc-errors/*.غرة; do
     name=$(basename "$src" .غرة)
     [ -f "$ROOT/tests/cc-errors/$name.err" ] || continue

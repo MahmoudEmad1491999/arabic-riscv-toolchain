@@ -326,7 +326,7 @@ The result type is unsigned 8-bit because that is exactly what a Linux exit code
 
 | Tool | Role |
 |---|---|
-| `مترجم` | compiler: `مترجم رئيسي.غرة [مسار_بحث | ملف.o | ملف.كائن | ملف.مكتبة …]` follows the imports, compiles what is out of date (source changed, or an imported interface hash changed) into `بناء/` and links `بناء/رئيسي`. One command, no Makefile needed (decision 37). `مترجم رئيسي.غرة خرج.تجميع …` writes the whole program as one assembly file instead. |
+| `مترجم` | compiler: `مترجم رئيسي.غرة [مسار_بحث | ملف.o | ملف.كائن | ملف.مكتبة …]` follows the imports, compiles what is out of date (source changed, or an imported interface hash changed) into `بناء/` and links `بناء/رئيسي`. One command, no Makefile needed (decision 37). `مترجم رئيسي.غرة خرج.تجميع …` writes the whole program as one assembly file instead. With `--تنقيح` (only on request, decision 64, A89) it also writes the debug rows: source positions, functions, scopes, parameters, locals, globals and their types; objects built with and without it are never mixed up (changing the flag rebuilds). |
 | `محزم` | bundles objects into a library `.مكتبة` (decision 38) |
 | `عارض` | prints an object (`.كائن`) as text, interface included |
 | `مجمع` | assembler (exists) |

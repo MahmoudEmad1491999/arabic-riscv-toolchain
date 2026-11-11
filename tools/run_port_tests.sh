@@ -348,6 +348,10 @@ for src in "$ROOT"/os/برامج/*.غرة; do cc_same "$C/os" "برامج/$(base
 cc_same "$C/os" نواة.غرة out.تجميع || ok=0
 fresh "$C/tools" "$ROOT/مصدر"
 for tool in عارض محزم مجمع رابط مترجم; do cc_same "$C/tools" $tool.غرة out.تجميع "$ROOT/lib" || ok=0; done
+# --تنقيح (A89): the debug rows, for the tests, the OS programs and the tools
+for src in "$ROOT"/tests/cc/*.غرة; do cc_same "$C/asm" "$(basename "$src")" out.تجميع "$ROOT/lib" --تنقيح || ok=0; done
+for src in "$ROOT"/os/برامج/*.غرة; do cc_same "$C/os" "برامج/$(basename "$src")" out.تجميع مستخدم "$ROOT/lib" --تنقيح || ok=0; done
+for tool in مجمع مترجم; do cc_same "$C/tools" $tool.غرة out.تجميع "$ROOT/lib" --تنقيح || ok=0; done
 # errors, both orders; usage and file errors
 fresh "$C/err" "$ROOT/tests/cc-errors"
 for order in "" file; do
@@ -370,6 +374,14 @@ done
 fresh "$C/kernel" "$ROOT/os"
 cc_same "$C/kernel" نواة.غرة --عاري بدء.تجميع معالج.تجميع || ok=0
 cc_same "$C/kernel" برامج/صدى.غرة مستخدم "$ROOT/lib" --برنامج || ok=0
+# the same builds again with --تنقيح: every object is rebuilt (A89)
+for src in "$ROOT"/tests/cc/*.غرة; do
+    name=$(basename "$src" .غرة)
+    [ -f "$ROOT/tests/cc/$name.c" ] && continue
+    cc_same "$C/build" "$name.غرة" "$ROOT/lib" --تنقيح || ok=0
+done
+cc_same "$C/kernel" نواة.غرة --عاري --تنقيح بدء.تجميع معالج.تجميع || ok=0
+cc_same "$C/kernel" برامج/صدى.غرة مستخدم "$ROOT/lib" --برنامج --تنقيح || ok=0
 fresh "$C/self" "$ROOT/مصدر"
 cc_same "$C/self" مترجم.غرة "$ROOT/lib" || ok=0
 # damaged sources: characters deleted, doubled or replaced, lines swapped

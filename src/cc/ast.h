@@ -295,6 +295,7 @@ struct Module {
     size_t ndecls;
     int interface_only;   /* read from an object: declarations without bodies */
     uint64_t source_hash; /* FNV-1a of the source file */
+    int debug_file;       /* gen --تنقيح: its row in the files table */
     uint64_t iface_hash;  /* FNV-1a of the interface text */
     const char *obj_path; /* interface_only: the object (or archive) that has it */
     int visiting;         /* import cycle detection */
